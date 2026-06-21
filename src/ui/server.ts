@@ -426,8 +426,11 @@ export async function handleRequest(req: Request): Promise<Response> {
         if (path === '/public/detection.html' && req.method === 'GET') {
           try { const fs = require('fs'); const p = require('path'); const fp = p.join(process.cwd(),'public','detection.html'); const body = fs.readFileSync(fp); return new Response(body, {headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'public, max-age=60'}}); } catch(e) { return json({error:'File not found'},{},404); }
         }
+        if (path === '/public/ad-workflow.html' && req.method === 'GET') {
+          try { const fs = require('fs'); const p = require('path'); const fp = p.join(process.cwd(),'public','ad-workflow.html'); const body = fs.readFileSync(fp); return new Response(body, {headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'public, max-age=60'}}); } catch(e) { return json({error:'File not found'},{},404); }
+        }
         if (path === '/public' && req.method === 'GET') {
-          return json({files:['cheatsheet.html','detection.html']});
+          return json({files:['cheatsheet.html','detection.html','ad-workflow.html']}, cors);
         }
 if (path === '/' || path === '/index.html') {
           const acceptGzip = req.headers.get('accept-encoding')?.includes('gzip');

