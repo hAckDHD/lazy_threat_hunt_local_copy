@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Detection Engineering - Lazy Threat Hunt</title>
+<style>
+:root{--bg:#050505;--bg2:#0a0a0a;--bg3:#111111;--border:#1a2a1a;--text:#d0d0d0;--text2:#606060;--accent:#00ff41;--accent2:#00cc33;--red:#f85149;--yellow:#e3b341;--green:#3fb950;--orange:#d29922;--purple:#bc8cff}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,monospace;font-size:13px;padding:14px}
+h2{color:var(--accent);font-size:15px;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px}
+.row{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end}
+.group{flex:1;min-width:200px}
+label{font-size:11px;color:var(--text2);text-transform:uppercase;margin-bottom:4px;font-weight:700;display:block}
+input[type=text],input[type=number],select{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:7px 9px;border-radius:5px;font-size:12px;font-family:monospace;box-sizing:border-box}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+button{background:var(--accent2);color:#fff;border:none;padding:6px 14px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600}
+button:hover{background:var(--accent)}
+button.secondary{background:var(--bg3);border:1px solid var(--border);color:var(--text)}
+button.secondary:hover{border-color:var(--accent);color:var(--accent)}
+.badge{display:inline-block;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase}
+pre{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:10px;overflow:auto;font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:400px;margin:0}
+.preview-box{margin-bottom:14px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px}
+.preview-label{font-size:11px;color:var(--text2);text-transform:uppercase;font-weight:700;margin-bottom:6px}
+.copy-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 8px;border-radius:4px;cursor:pointer;font-size:10px;margin-top:4px}
+.copy-btn:hover{border-color:var(--accent);color:var(--accent)}
+.header-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+</style>
+</head>
+<body>
+
+<h2>Detection Engineering</h2>
+
+<div class="row">
+  <div class="group" style="flex:2">
+    <label>IOC Value</label>
+    <input type="text" id="iocVal" placeholder="IP, domain, hash, URL..." onkeydown="if(event.key==='Enter')gen()">
+  </div>
+  <div class="group" style="flex:1">
+    <label>Type</label>
+    <select id="iocType">
+      <option value="auto">Auto-detect</option>
+      <option value="ip">IP</option>
+      <option value="domain">Domain</option>
+      <option value="sha256">SHA256</option>
+      <option value="md5">MD5</option>
+      <option value="sha1">SHA1</option>
+      <option value="url">URL</option>
+      <option value="email">Email</option>
+      <option value="cve">CVE</option>
+    </select>
+  </div>
+  <div class="group" style="flex:1">
+    <label>Platform</label>
+    <select id="platform">
+      <option value="kql">Sentinel / Defender (KQL)</option>
+      <option value="sigma">Sigma Rule</option>
+      <option value="splunk">Splunk (SPL)</option>
+      <option value="elastic">Elastic (DSL)</option>
+    </select>
+  </div>
+  <div style="align-self:flex-end">
+    <button onclick="gen()">Generate Rule</button>
+  </div>
+</div>
+
+<div class="row">
+  <div class="group">
+    <label>Severity</label>
+    <select id="severity">
+      <option value="high">High</option>
+      <option value="critical">Critical</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+    </select>
+  </div>
+  <div class="group">
+    <label>Lookback</label>
+    <select id="lookback">
+      <option value="1d">24h</option>
+      <option value="7d" selected>7d</option>
+      <option value="14d">14d</option>
+      <option value="30d">30d</option>
+    </select>
+  </div>
+  <div class="group">
+    <label>Threshold</label>
+    <input type="number" id="threshold" value="1" min="1" max="1000">
+  </div>
+  <div class="group">
+    <label>MITRE Technique</label>
+    <input type="text" id="mitre" placeholder="T1071">
+  </div>
+</div>
+
+<div id="results"></div>
+
+<script>
+var DQ = String.fromCharCode(34);
+
+function gen(){
+  var val = (document.getElementById("iocVal")||{}).value||"";
+  if(!val.trim()){alert("Enter an IOC value");return;}
+  var type = (document.getElementById("iocType")||{}).value||"auto";
+  if(type==="auto") type = detectType(val)||"hostname";
+  var platform = (document.getElementById("platform")||{}).value||"kql";
+  var severity = (document.getElementById("severity")||{}).value||"high";
+  var lookback = (document.getElementById("lookback")||{}).value||"7d";
+  var threshold = parseInt((document.getElementById("threshold")||{}).value||"1");
+  var mitre = (document.getElementById("mitre")||{}).value||"";
+
+  var rule = buildRule(val.trim(), type, platform, severity, lookback, threshold, mitre);
+  var huntQ = buildHunt(val.trim(), type, lookback);
+
+  var sevColor = {critical:"var(--red)",high:"var(--orange)",medium:"var(--yellow)",low:"var(--green)"}[severity]||"var(--accent)";
+
+  var h = "";
+  h += '<div class="header-row">';
+  h += '<span style="font-size:14px;font-weight:700;color:var(--accent)">Detection Rule</span>';
+  h += '<span class="badge" style="background:'+sevColor+';color:#000">'+severity.toUpperCase()+'</span>';
+  if(mitre) h += '<span class="badge" style="background:var(--bg3);color:var(--purple);border:1px solid #3d2a5a">'+esc(mitre)+'</span>';
+  h += '<button class="copy-btn" style="margin-left:auto" onclick="copyText(document.getElementById('+DQ+'rulePre'+DQ+').textContent)">Copy Rule</button>';
+  h += '</div>';
+  h += '<pre id="rulePre">'+esc(rule)+'</pre>';
+
+  h += '<div class="preview-box">';
+  h += '<div class="preview-label">Hunt Query (preview)</div>';
+  h += '<pre>'+esc(huntQ)+'</pre>';
+  h += '<button class="copy-btn" onclick="copyText(this.previousElementSibling.textContent)">Copy Hunt Query</button>';
+  h += '</div>';
+
+  document.getElementById("results").innerHTML = h;
+}
+
+function buildRule(val, type, platform, severity, lookback, threshold, mitre){
+  var ts = new Date().toISOString().split("T")[0];
+  var rn = "IOC Detection - " + type.toUpperCase() + " - " + val.substring(0,40);
+  if(platform==="kql") return buildKQL(val, type, lookback, threshold, severity, mitre, ts, rn);
+  if(platform==="sigma") return buildSigma(val, type, severity, mitre, ts);
+  if(platform==="splunk") return buildSplunk(val, type, lookback, threshold, severity, mitre, ts);
+  if(platform==="elastic") return buildElastic(val, type, severity, mitre, ts);
+  return "// Unknown platform: " + platform;
+}
+
+function buildKQL(val, type, lookback, threshold, severity, mitre, ts, rn){
+  var tw = "| where TimeGenerated >= ago(" + lookback + ")";
+  var q = DQ;
+  var lines = [];
+  lines.push("// Sentinel Analytics Rule");
+  lines.push("// " + rn);
+  lines.push("// Generated: " + ts);
+  lines.push("// Severity: " + severity.toUpperCase());
+  if(mitre) lines.push("// MITRE: " + mitre);
+  if(type==="ip"||type==="ipv6"){
+    lines.push("let ioc = " + q + val + q + ";");
+    lines.push("DeviceNetworkEvents");
+    lines.push(tw);
+    lines.push("| where RemoteIP == ioc or LocalIP == ioc");
+    lines.push("| summarize ConnectionCount=count(), Devices=make_set(DeviceName) by RemoteIP");
+    lines.push("| where ConnectionCount >= " + threshold);
+    lines.push("| project TimeGenerated, DeviceName, RemoteIP, RemotePort, InitiatingProcessFileName");
+  } else if(type==="domain"||type==="hostname"){
+    lines.push("let ioc = " + q + val + q + ";");
+    lines.push("DeviceNetworkEvents");
+    lines.push(tw);
+    lines.push("| where RemoteUrl has ioc");
+    lines.push("| summarize QueryCount=count(), Devices=make_set(DeviceName) by RemoteUrl");
+    lines.push("| where QueryCount >= " + threshold);
+    lines.push("| project TimeGenerated, DeviceName, RemoteUrl, InitiatingProcessFileName");
+  } else if(type==="sha256"){
+    lines.push("let ioc = " + q + val + q + ";");
+    lines.push("DeviceProcessEvents");
+    lines.push(tw);
+    lines.push("| where SHA256 == ioc");
+    lines.push("| summarize ExecutionCount=count(), Devices=make_set(DeviceName) by SHA256");
+    lines.push("| where ExecutionCount >= " + threshold);
+    lines.push("| project TimeGenerated, DeviceName, FileName, SHA256, CommandLine");
+  } else if(type==="md5"){
+    lines.push("let ioc = " + q + val + q + ";");
+    lines.push("DeviceFileEvents");
+    lines.push(tw);
+    lines.push("| where MD5 == ioc");
+    lines.push("| project TimeGenerated, DeviceName, FileName, FolderPath, MD5");
+  } else if(type==="url"){
+    lines.push("let ioc = " + q + val + q + ";");
+    lines.push("DeviceNetworkEvents");
+    lines.push(tw);
+    lines.push("| where RemoteUrl has ioc");
+    lines.push("| project TimeGenerated, DeviceName, RemoteUrl, InitiatingProcessFileName");
+  } else if(type==="email"){
+    lines.push("let ioc = " + q + val + q + ";");
+    lines.push("EmailEvents");
+    lines.push(tw);
+    lines.push("| where SenderFromAddress has ioc or RecipientEmailAddress has ioc");
+    lines.push("| project TimeGenerated, SenderFromAddress, RecipientEmailAddress, Subject, ThreatTypes");
+  } else if(type==="cve"){
+    lines.push("let ioc = " + q + val + q + ";");
+    lines.push("SecurityAlert");
+    lines.push(tw);
+    lines.push("| where Entities has ioc");
+    lines.push("| project TimeGenerated, AlertName, AlertSeverity, CompromisedEntity");
+  }
+  return lines.join("\n");
+}
+
+function buildSigma(val, type, severity, mitre, ts){
+  var title = "IOC Detection - " + type.toUpperCase() + " - " + val.substring(0,30);
+  var lines = [];
+  lines.push("title: " + title);
+  lines.push("id: " + uuid());
+  lines.push("status: experimental");
+  lines.push("description: Detection for " + type + " IOC: " + val);
+  lines.push("date: " + ts);
+  lines.push("author: Lazy Threat Hunt");
+  lines.push("level: " + severity);
+  if(mitre) lines.push("tags:\n    - attack." + mitre.toLowerCase());
+  lines.push("logsource:");
+  if(type==="ip"||type==="ipv6") lines.push("    category: network_connection");
+  else if(type==="domain") lines.push("    category: dns");
+  else if(type==="sha256"||type==="md5"||type==="sha1") lines.push("    category: process_creation\n    product: windows");
+  else if(type==="email") lines.push("    category: email");
+  else lines.push("    category: process_creation");
+  lines.push("detection:");
+  lines.push("    selection:");
+  var sq = "'";
+  if(type==="ip") lines.push("        dst_ip|contains: " + sq + val + sq);
+  else if(type==="domain") lines.push("        dns.question.name|contains: " + sq + val + sq);
+  else if(type==="sha256") lines.push("        Hashes|contains: " + sq + "SHA256=" + val + sq);
+  else if(type==="md5") lines.push("        Hashes|contains: " + sq + "MD5=" + val + sq);
+  else if(type==="url") lines.push("        url|contains: " + sq + val + sq);
+  else if(type==="email") lines.push("        sender|contains: " + sq + val + sq);
+  else lines.push("        CommandLine|contains: " + sq + val + sq);
+  lines.push("    condition: selection");
+  lines.push("falsepositives:\n    - Unknown");
+  return lines.join("\n");
+}
+
+function buildSplunk(val, type, lookback, threshold, severity, mitre, ts){
+  var q = DQ;
+  var s = "";
+  if(type==="ip") s = "index=* (src_ip=" + q + val + q + " OR dest_ip=" + q + val + q + ") earliest=-" + lookback + " latest=now | stats count by _time, src_ip, dest_ip | where count >= " + threshold;
+  else if(type==="domain") s = "index=* (dns.query=" + q + val + q + " OR query=" + q + val + q + ") earliest=-" + lookback + " latest=now | stats count by _time, src, dns.query | where count >= " + threshold;
+  else if(type==="sha256"||type==="md5"||type==="sha1") s = "index=* (sha256=" + q + val + q + " OR file_hash=" + q + val + q + ") earliest=-" + lookback + " latest=now | stats count by _time, file_name, sha256 | where count >= " + threshold;
+  else if(type==="url") s = "index=* url=" + q + val + q + " earliest=-" + lookback + " latest=now | stats count by _time, src_ip, url | where count >= " + threshold;
+  else if(type==="email") s = "index=* (sender=" + q + val + q + " OR recipient=" + q + val + q + ") earliest=-" + lookback + " latest=now | stats count by _time, sender, recipient | where count >= " + threshold;
+  else s = "index=* " + q + val + q + " earliest=-" + lookback + " latest=now | stats count by _time | where count >= " + threshold;
+  return "// Splunk Saved Search: IOC Detection - " + type.toUpperCase() + "\n// Generated: " + ts + "\n// Severity: " + severity.toUpperCase() + "\n" + (mitre ? "// MITRE: " + mitre + "\n" : "") + s;
+}
+
+function buildElastic(val, type, severity, mitre, ts){
+  var q = DQ;
+  var query = "{" + q + "query" + q + ":{" + q + "bool" + q + ":{" + q + "should" + q + ":[";
+  if(type==="ip") query += "{" + q + "terms" + q + ":{" + q + "source.ip" + q + ":[" + q + val + q + "]}},{" + q + "terms" + q + ":{" + q + "destination.ip" + q + ":[" + q + val + q + "]}}";
+  else if(type==="domain") query += "{" + q + "terms" + q + ":{" + q + "dns.question.name" + q + ":[" + q + val + q + "]}},{" + q + "terms" + q + ":{" + q + "url.domain" + q + ":[" + q + val + q + "]}}";
+  else if(type==="sha256") query += "{" + q + "terms" + q + ":{" + q + "file.hash.sha256" + q + ":[" + q + val + q + "]}},{" + q + "terms" + q + ":{" + q + "process.hash.sha256" + q + ":[" + q + val + q + "]}}";
+  else if(type==="md5") query += "{" + q + "terms" + q + ":{" + q + "file.hash.md5" + q + ":[" + q + val + q + "]}}";
+  else if(type==="url") query += "{" + q + "terms" + q + ":{" + q + "url.full" + q + ":[" + q + val + q + "]}}";
+  else if(type==="email") query += "{" + q + "terms" + q + ":{" + q + "email.from.address" + q + ":[" + q + val + q + "]}}";
+  else query += "{" + q + "terms" + q + ":{" + q + "process.command_line" + q + ":[" + q + val + q + "]}}";
+  query += "]," + q + "minimum_should_match" + q + ":1}}}," + q + "aggs" + q + ":{" + q + "by_host" + q + ":{" + q + "terms" + q + ":{" + q + "field" + q + ":" + q + "host.name" + q + "," + q + "size" + q + ":20}}}}";
+  return "// Elastic Detection Rule\n// Generated: " + ts + "\n// Severity: " + severity.toUpperCase() + "\n" + (mitre ? "// MITRE: " + mitre + "\n" : "") + query;
+}
+
+function buildHunt(val, type, lookback){
+  var q = DQ;
+  if(type==="ip"||type==="ipv6") return "let ip = " + q + val + q + ";\nunion\n  (DeviceNetworkEvents | where TimeGenerated >= ago(" + lookback + ") | where RemoteIP == ip or LocalIP == ip),\n  (CommonSecurityLog | where SourceIP == ip or DestinationIP == ip),\n  (SigninLogs | where IPAddress == ip)\n| order by TimeGenerated desc";
+  if(type==="domain"||type==="hostname") return "let domain = " + q + val + q + ";\nunion\n  (DeviceNetworkEvents | where TimeGenerated >= ago(" + lookback + ") | where RemoteUrl has domain),\n  (DnsEvents | where Name has domain)\n| order by TimeGenerated desc";
+  if(type==="sha256"||type==="sha1"||type==="md5") return "let hash = " + q + val + q + ";\nunion\n  (DeviceFileEvents | where TimeGenerated >= ago(" + lookback + ") | where SHA256 == hash),\n  (DeviceProcessEvents | where SHA256 == hash),\n  (DeviceImageLoadEvents | where SHA256 == hash)\n| order by TimeGenerated desc";
+  if(type==="url") return "let url = " + q + val + q + ";\nDeviceNetworkEvents\n| where TimeGenerated >= ago(" + lookback + ")\n| where RemoteUrl has url\n| order by TimeGenerated desc";
+  if(type==="email") return "let email = " + q + val + q + ";\nunion\n  (EmailEvents | where SenderFromAddress has email or RecipientEmailAddress has email),\n  (AuditLogs | where InitiatedBy has email)\n| order by TimeGenerated desc";
+  if(type==="cve") return "let cve = " + q + val + q + ";\nunion\n  (SecurityAlert | where Entities has cve),\n  (CommonSecurityLog | where Message has cve)\n| order by TimeGenerated desc";
+  return "// Hunt query for " + type + ": " + val;
+}
+
+function detectType(v){
+  v=v.trim();
+  if(!v) return null;
+  if(/^CVE-\d{4}-\d{4,}/i.test(v)) return "cve";
+  if(/^HKEY_/i.test(v)) return "registry_key";
+  if(/^[a-f0-9]{64}$/i.test(v)) return "sha256";
+  if(/^[a-f0-9]{40}$/i.test(v)) return "sha1";
+  if(/^[a-f0-9]{32}$/i.test(v)) return "md5";
+  if(/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(v)) return "email";
+  if(/^https?:\/\//i.test(v)) return "url";
+  if(/^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/.test(v)) return "ip";
+  if(/^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$/.test(v)) return "domain";
+  return null;
+}
+
+function esc(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function copyText(t){ navigator.clipboard.writeText(t); }
+function uuid(){ return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,function(c){var r=(Math.random()*16)|0;return(c==="x"?r:(r&0x3)|0x8).toString(16);}); }
+</script>
+</body>
+</html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cheat Sheet - Lazy Threat Hunt</title>
+<style>
+:root{--bg:#050505;--bg2:#0a0a0a;--bg3:#111111;--border:#1a2a1a;--text:#d0d0d0;--text2:#606060;--accent:#00ff41;--accent2:#00cc33;--red:#f85149;--yellow:#e3b341;--green:#3fb950;--purple:#bc8cff}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,monospace;font-size:13px;padding:14px}
+h2{color:var(--accent);font-size:15px;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px}
+h3{color:var(--accent);font-size:12px;margin:12px 0 6px;text-transform:uppercase;letter-spacing:.3px}
+.section{margin-bottom:16px}
+.item{margin-bottom:8px;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:5px}
+.item-label{font-size:11px;color:var(--purple);font-weight:700;margin-bottom:4px}
+pre{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px;overflow:auto;font-size:11px;white-space:pre-wrap;word-break:break-all;margin:0}
+.copy-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 8px;border-radius:4px;cursor:pointer;font-size:10px;margin-top:4px}
+.copy-btn:hover{border-color:var(--accent);color:var(--accent)}
+.filter-row{display:flex;gap:7px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+input[type=text],select{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:7px 9px;border-radius:5px;font-size:12px;font-family:monospace}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+label{display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer}
+.mitre-tag{display:inline-block;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:700;background:var(--bg3);color:var(--purple);border:1px solid #3d2a5a}
+</style>
+</head>
+<body>
+
+<h2>XDR Threat Hunting Cheat Sheet</h2>
+
+<div class="filter-row">
+  <input type="text" id="csSearch" placeholder="Search..." style="flex:1;min-width:150px" oninput="filterCS()">
+  <select id="csCat" onchange="filterCS()" style="width:auto">
+    <option value="">All Categories</option>
+    <option value="kql">KQL Syntax</option>
+    <option value="tables">Tables</option>
+    <option value="hunts">Hunt Patterns</option>
+    <option value="fields">Fields</option>
+    <option value="mitre">MITRE</option>
+    <option value="lookback">Lookback</option>
+    <option value="detection">Detection Rules</option>
+  </select>
+</div>
+
+<div id="csContent"></div>
+
+<script>
+var DATA = [
+  {cat:"kql", title:"KQL Quick Syntax", items:[
+    {label:"Filter by time", code:"| where TimeGenerated >= ago(7d)"},
+    {label:"Filter by field", code:"| where RemoteIP == \"203.0.113.50\""},
+    {label:"Project columns", code:"| project TimeGenerated, DeviceName, RemoteIP"},
+    {label:"Summarize/group", code:"| summarize count() by DeviceName, bin(TimeGenerated, 1h)"},
+    {label:"Sort results", code:"| order by TimeGenerated desc"},
+    {label:"Top N results", code:"| take 100"},
+    {label:"Union tables", code:"union (Table1), (Table2)"},
+    {label:"Join tables", code:"| join kind=inner (OtherTable) on DeviceName"},
+    {label:"Parse JSON", code:"| extend parsed = parse_json(AdditionalFields)"},
+    {label:"Dynamic list", code:"let bad = dynamic([\"a\",\"b\"]); | where col in (bad)"},
+    {label:"Regex match", code:"| where Name matches regex @\"[0-9]{1,3}\\.[0-9]{1,3}\""},
+    {label:"Count distinct", code:"| summarize dcount(RemoteIP) by DeviceName"},
+  ]},
+  {cat:"tables", title:"Table Reference", items:[
+    {label:"DeviceNetworkEvents", code:"Network connections | RemoteIP, RemotePort, RemoteUrl, ActionType"},
+    {label:"DeviceProcessEvents", code:"Process creation | FileName, CommandLine, SHA256, AccountName"},
+    {label:"DeviceFileEvents", code:"File events | FileName, FolderPath, SHA256, MD5, ActionType"},
+    {label:"DeviceImageLoadEvents", code:"DLL/image loads | FileName, FolderPath, SHA256"},
+    {label:"DeviceRegistryEvents", code:"Registry changes | RegistryKey, RegistryValueName"},
+    {label:"DnsEvents", code:"DNS queries | Name, QueryType, IPAddresses"},
+    {label:"IdentityLogonEvents", code:"Auth events | AccountUpn, IPAddress, Location, ResultType"},
+    {label:"EmailEvents", code:"Email | SenderFromAddress, RecipientEmailAddress, Subject"},
+    {label:"SecurityAlert", code:"Alerts | AlertName, AlertSeverity, CompromisedEntity"},
+    {label:"CommonSecurityLog", code:"Firewall/proxy | SourceIP, DestinationIP, DestinationPort"},
+  ]},
+  {cat:"hunts", title:"Universal Hunt Patterns", items:[
+    {label:"IP Sweep (all tables)", code:"let ip = \"203.0.113.50\";\nunion\n  (DeviceNetworkEvents | where RemoteIP == ip or LocalIP == ip),\n  (CommonSecurityLog | where SourceIP == ip or DestinationIP == ip),\n  (SigninLogs | where IPAddress == ip)\n| order by TimeGenerated desc"},
+    {label:"DNS Hunt", code:"let domain = \"evil.com\";\nunion\n  (DeviceNetworkEvents | where RemoteUrl has domain),\n  (DnsEvents | where Name has domain)\n| order by TimeGenerated desc"},
+    {label:"Hash Sweep", code:"let hash = \"a1b2c3...\";\nunion\n  (DeviceFileEvents | where SHA256 == hash),\n  (DeviceProcessEvents | where SHA256 == hash),\n  (DeviceImageLoadEvents | where SHA256 == hash)\n| order by TimeGenerated desc"},
+    {label:"Lateral Movement", code:"DeviceNetworkEvents\n| where RemotePort in (3389, 445, 5985, 5986)\n| summarize Targets=make_set(DeviceName) by RemoteIP, bin(TimeGenerated, 5m)"},
+    {label:"Persistence (Run Keys)", code:"DeviceFileEvents\n| where FolderPath has_any ([\"\\\\Run\\\\\", \"\\\\Startup\\\\\"])\n| where InitiatingProcessFileName !in~ (\"setup.exe\", \"msiexec.exe\")"},
+    {label:"Credential Dumping", code:"DeviceProcessEvents\n| where FileName =~ \"rundll32.exe\"\n| where CommandLine contains \"MiniDump\" or CommandLine contains \"lsass\""},
+    {label:"C2 Beaconing", code:"let ip = \"203.0.113.50\";\nDeviceNetworkEvents\n| where RemoteIP == ip\n| serialize | extend gap = datetime_diff(\"second\", next(Timestamp, 1), Timestamp)\n| where gap between (290 .. 310)"},
+    {label:"PowerShell Download", code:"DeviceProcessEvents\n| where FileName =~ \"powershell.exe\"\n| where CommandLine has_any (\"Net.WebClient\", \"DownloadFile\", \"Invoke-WebRequest\", \"iex\", \"-ep bypass\")"},
+    {label:"DGA Detection", code:"DeviceNetworkEvents\n| where ActionType contains \"Dns\"\n| extend domain = tostring(RemoteUrl)\n| where domain matches regex @\"[a-z0-9]{20,}\\\\.(xyz|top|club|buzz)$\""},
+    {label:"Unsigned Binary", code:"DeviceProcessEvents\n| where IsProcessSigned == false\n| summarize Devices=dcount(DeviceName) by FileName\n| where Devices >= 3"},
+  ]},
+  {cat:"fields", title:"Field Quick Reference", items:[
+    {label:"IP Addresses", code:"RemoteIP, LocalIP, SourceIP, DestinationIP, IPAddress"},
+    {label:"Domains", code:"RemoteUrl, Name (DnsEvents), domain (parsed from URL)"},
+    {label:"File Hashes", code:"SHA256, MD5, SHA1 (on File/Process/Image tables)"},
+    {label:"Process Info", code:"FileName, CommandLine, InitiatingProcessFileName, AccountName"},
+    {label:"Auth", code:"AccountUpn, InitiatedBy, UserPrincipalName"},
+    {label:"Email", code:"SenderFromAddress, RecipientEmailAddress"},
+    {label:"Registry", code:"RegistryKey, RegistryValueName, RegistryValueData"},
+    {label:"Network", code:"RemotePort, DestinationPort, Protocol, ActionType"},
+  ]},
+  {cat:"mitre", title:"MITRE ATT&CK Mapping", items:[
+    {label:"T1071 - Application Layer Protocol", code:"Network connections to C2 | DeviceNetworkEvents where RemoteIP in (bad_ips)", mitre:"T1071"},
+    {label:"T1059 - Command & Scripting", code:"PowerShell/WMI execution | DeviceProcessEvents where FileName in~ (\"powershell.exe\", \"cmd.exe\")", mitre:"T1059"},
+    {label:"T1003 - OS Credential Dumping", code:"LSASS access | DeviceProcessEvents where CommandLine contains \"lsass\"", mitre:"T1003"},
+    {label:"T1566 - Phishing", code:"Email with malicious links | EmailEvents where ThreatTypes has \"Phish\"", mitre:"T1566"},
+    {label:"T1204 - User Execution", code:"User launched malicious file | DeviceProcessEvents where InitiatingProcessAccountName != \"SYSTEM\"", mitre:"T1204"},
+    {label:"T1547 - Boot/Logon Autostart", code:"Registry Run keys | DeviceRegistryEvents where RegistryKey has \"\\\\Run\\\\\"", mitre:"T1547"},
+    {label:"T1098 - Account Manipulation", code:"Account changes | AuditLogs where OperationName has \"Add member\"", mitre:"T1098"},
+    {label:"T1046 - Network Service Discovery", code:"Port scanning | DeviceNetworkEvents | summarize dcount(RemotePort) by DeviceName", mitre:"T1046"},
+    {label:"T1082 - System Info Discovery", code:"System recon | DeviceProcessEvents where FileName in~ (\"systeminfo.exe\", \"whoami.exe\")", mitre:"T1082"},
+    {label:"T1021 - Remote Services", code:"RDP/SMB lateral | DeviceNetworkEvents where RemotePort in (3389, 445)", mitre:"T1021"},
+  ]},
+  {cat:"lookback", title:"Lookback Guide", items:[
+    {label:"Live IR (active incident)", code:"24h - 72h"},
+    {label:"Weekly threat hunt", code:"7d - 14d"},
+    {label:"Campaign tracking", code:"30d"},
+    {label:"Retrospective / deep dive", code:"90d+"},
+    {label:"Scheduled analytics rules", code:"1d (sliding window)"},
+    {label:"Historical hash search", code:"30d - 90d (hashes persist)"},
+  ]},
+  {cat:"detection", title:"Detection Rule Templates", items:[
+    {label:"KQL - IP Beacon Alert", code:"// Sentinel Analytics Rule - IP Beacon Detection\nlet threshold = 10;\nlet bad_ips = dynamic([\"203.0.113.50\", \"198.51.100.22\"]);\nDeviceNetworkEvents\n| where TimeGenerated >= ago(1d)\n| where RemoteIP in (bad_ips)\n| summarize ConnectionCount=count(), Devices=make_set(DeviceName) by bin(TimeGenerated, 1h), RemoteIP\n| where ConnectionCount >= threshold"},
+    {label:"KQL - Malicious Hash Execution", code:"// Sentinel Analytics Rule - Known Bad Hash\nlet bad_hashes = dynamic([\"a1b2c3d4...\"]);\nDeviceProcessEvents\n| where TimeGenerated >= ago(1d)\n| where SHA256 in (bad_hashes)\n| project TimeGenerated, DeviceName, FileName, SHA256, CommandLine, AccountName"},
+    {label:"KQL - DNS to Malicious Domain", code:"// Sentinel Analytics Rule - Malicious DNS\nlet mal_domains = dynamic([\"evil-c2.xyz\"]);\nDeviceNetworkEvents\n| where TimeGenerated >= ago(1d)\n| where RemoteUrl has_any (mal_domains)\n| project TimeGenerated, DeviceName, RemoteUrl, RemoteIP, InitiatingProcessFileName"},
+    {label:"Sigma - Network Connection to Bad IP", code:"title: Network Connection to Known Malicious IP\nid: " + randomUUID() + "\nstatus: experimental\ndescription: Detects network connections to known malicious IPs\ndate: " + new Date().toISOString().split("T")[0] + "\nauthor: Lazy Threat Hunt\nlevel: high\nlogsource:\n    category: network_connection\ndetection:\n    selection:\n        dst_ip|contains:\n            - \"203.0.113.50\"\n            - \"198.51.100.22\"\n    condition: selection\nfalsepositives:\n    - Unknown"},
+    {label:"Sigma - Malicious Hash", code:"title: Known Malicious File Hash\ndetection:\n    selection:\n        Hashes|contains:\n            - \"SHA256=a1b2c3d4...\"\n    condition: selection\nlogsource:\n    category: process_creation\n    product: windows\nlevel: critical"},
+    {label:"Splunk - IP Hunt", code:"index=* (src_ip=\"203.0.113.50\" OR dest_ip=\"203.0.113.50\") earliest=-7d latest=now | stats count by _time, src_ip, dest_ip | sort -count"},
+    {label:"Splunk - Hash Hunt", code:"index=* (sha256=\"a1b2c3d4...\" OR file_hash=\"a1b2c3d4...\") earliest=-30d latest=now | stats count by _time, file_name, sha256"},
+    {label:"YARA - Network IOC", code:"rule Network_IOC_Detection {\n    meta:\n        description = \"Detects network IOCs in files\"\n    strings:\n        $ip = \"203.0.113.50\" nocase\n        $domain = \"evil-c2.xyz\" nocase\n    condition:\n        any of them\n}"},
+  ]},
+];
+
+function filterCS(){
+  var search = (document.getElementById("csSearch")||{}).value||"";
+  var cat = (document.getElementById("csCat")||{}).value||"";
+  search = search.toLowerCase();
+  var html = "";
+  for(var i=0; i<DATA.length; i++){
+    var section = DATA[i];
+    if(cat && section.cat !== cat) continue;
+    var filtered = [];
+    for(var j=0; j<section.items.length; j++){
+      var item = section.items[j];
+      if(!search || item.label.toLowerCase().indexOf(search) !== -1 || item.code.toLowerCase().indexOf(search) !== -1){
+        filtered.push(item);
+      }
+    }
+    if(!filtered.length) continue;
+    html += "<h3>" + escHtml(section.title) + "</h3>";
+    for(var k=0; k<filtered.length; k++){
+      html += '<div class="item">';
+      html += '<div class="item-label">' + escHtml(filtered[k].label) + '</div>';
+      if(filtered[k].mitre) html += ' <span class="mitre-tag">' + filtered[k].mitre + '</span>';
+      html += '<pre>' + escHtml(filtered[k].code) + '</pre>';
+      html += '<button class="copy-btn" onclick="copyText(this.previousElementSibling.textContent)">Copy</button>';
+      html += '</div>';
+    }
+  }
+  if(!html) html = '<div style="color:var(--text2);padding:20px;text-align:center">No results found.</div>';
+  document.getElementById("csContent").innerHTML = html;
+}
+
+function escHtml(s){
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function copyText(t){
+  navigator.clipboard.writeText(t);
+}
+
+function randomUUID(){
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,function(c){
+    var r=(Math.random()*16)|0;
+    return (c==="x"?r:(r&0x3)|0x8).toString(16);
+  });
+}
+
+filterCS();
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "name": "ioc-platform-local",
+  "version": "1.0.0",
+  "description": "IOC Intelligence Platform — local instance (no Vercel/Turso)",
+  "type": "module",
+  "bin": {
+    "ioc": "./src/cli.ts"
+  },
+  "scripts": {
+    "start": "bun src/cli.ts",
+    "serve": "bun src/cli.ts serve",
+    "dev": "bun --watch src/cli.ts"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.3",
+    "mammoth": "^1.7.2",
+    "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^20.0.0"
+  }
+}

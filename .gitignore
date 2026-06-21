@@ -1,0 +1,9 @@
+node_modules/
+.env
+*.db
+*.db-wal
+*.db-shm
+.ioc-tool/
+dist/
+'${HOME}'/
+${HOME}/
