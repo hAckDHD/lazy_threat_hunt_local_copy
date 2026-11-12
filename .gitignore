@@ -1,0 +1,25 @@
+# Dependencies / build output
+node_modules/
+dist/
+.vercel/
+
+# Secrets — never commit real credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local data
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+.ioc-tool/
+
+# Logs / OS / editor
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

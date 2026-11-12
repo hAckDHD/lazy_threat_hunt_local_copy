@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest      # Linux x64
+          - ubuntu-24.04-arm   # Linux ARM64
+          - macos-latest       # macOS ARM64 (Apple silicon)
+          - macos-15-intel     # macOS x64
+          - windows-latest     # Windows x64
+          - windows-11-arm     # Windows ARM64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun test
+      - name: Server starts and answers
+        shell: bash
+        run: |
+          IOC_PORT=18847 bun src/cli.ts serve &
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            sleep 1
+            curl -fsS http://127.0.0.1:18847/api/stats && exit 0
+          done
+          exit 1
+
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun audit
