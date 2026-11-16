@@ -1229,6 +1229,25 @@ function getHTML(): string {
       80% { transform: translate(2px, -2px); clip-path: inset(30% 0 45% 0); }
       100% { transform: translate(0); clip-path: inset(0 0 0 0); }
     }
+    /* Hunt Frameworks — picker pills, model cards, and phase worksheet */
+    .fw-pill{display:inline-block;font-size:11px;padding:5px 10px;margin:0 7px 7px 0;border:1px solid var(--border);border-radius:5px;background:var(--bg3);color:var(--text2);cursor:pointer;}
+    .fw-pill:hover{border-color:var(--accent);}
+    .fw-pill.on{border-color:var(--accent);color:var(--text);background:var(--bg2);}
+    .fw-pill b{color:var(--accent);}
+    .fw-origin{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;font-weight:700;margin-bottom:5px;}
+    .fw-use{font-size:12px;color:var(--text);line-height:1.45;}
+    .fw-phase>.panel-header{display:flex;align-items:center;gap:8px;}
+    .fw-num{font-family:monospace;color:var(--accent);font-weight:700;min-width:20px;}
+    .fw-phase-desc{font-size:10px;color:var(--text2);font-weight:400;}
+    .fw-prompts{margin:0 0 8px 16px;padding:0;}
+    .fw-prompts li{font-size:11px;color:var(--text2);line-height:1.5;}
+    .fw-input{width:100%;font-size:12px;font-family:inherit;resize:vertical;}
+    .fw-model{background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:9px 11px;}
+    .fw-model-h{font-size:12px;font-weight:700;color:var(--accent);}
+    .fw-model-h span{font-size:10px;color:var(--text2);font-weight:400;text-transform:none;}
+    .fw-model-note{font-size:10px;color:var(--text2);margin:3px 0 5px;line-height:1.4;}
+    .fw-model ol{margin:0 0 0 16px;padding:0;}
+    .fw-model ol li{font-size:11px;color:var(--text);line-height:1.5;}
   </style>
 </head>
 <body>
