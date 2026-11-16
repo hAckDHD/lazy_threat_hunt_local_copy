@@ -1,4 +1,5 @@
 import type { IOCType, HuntQuery, HuntOptions } from '../types/index.js';
+import { emailUsernames } from './username.js';
 
 // Trellix (McAfee) ePO — legacy on-prem SQL Query Builder against the ePO
 // reporting database. NOTE: this targets classic ePO only. Trellix Helix
@@ -172,11 +173,11 @@ SELECT
   ProcessName
 FROM EPOEvents
 WHERE (
-  ${inList('SourceUserName', values)}
-  OR ${inList('TargetUserName', values)}
+  ${inList('SourceUserName', emailUsernames(values))}
+  OR ${inList('TargetUserName', emailUsernames(values))}
 )${tw}
 ORDER BY ReceivedUTC DESC`;
-      description = `TQL (Trellix/ePO): Hunt for ${values.length} email IOC(s)`;
+      description = `TQL (Trellix/ePO): Hunt for ${values.length} email IOC(s) by account/login name`;
       break;
 
     case 'registry_key':

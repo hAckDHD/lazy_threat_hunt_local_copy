@@ -244,6 +244,19 @@ export async function deleteIOC(id: string, sessionId: string): Promise<void> {
   await db.execute({ sql: 'DELETE FROM iocs WHERE id = ? AND session_id = ?', args: [id, sessionId] });
 }
 
+// Delete every IOC in this session carrying a given tag. Tags are stored as a
+// JSON array string (e.g. ["sample"]), so we match the quoted token with LIKE.
+// The caller must restrict `tag` to a safe charset ([a-z0-9_-]) so it cannot
+// smuggle LIKE wildcards or quotes.
+export async function deleteByTag(tag: string, sessionId: string): Promise<{ deleted: number }> {
+  const db = await getDB();
+  const result = await db.execute({
+    sql: 'DELETE FROM iocs WHERE session_id = ? AND tags LIKE ?',
+    args: [sessionId, `%"${tag}"%`],
+  });
+  return { deleted: Number(result.rowsAffected ?? 0) };
+}
+
 export async function ignoreIOC(id: string, ignored: boolean, sessionId: string): Promise<void> {
   const db = await getDB();
   await db.execute({ sql: 'UPDATE iocs SET ignored=? WHERE id=? AND session_id=?', args: [ignored ? 1 : 0, id, sessionId] });

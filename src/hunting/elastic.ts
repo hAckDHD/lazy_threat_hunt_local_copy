@@ -1,4 +1,5 @@
 import type { IOCType, HuntQuery, HuntOptions } from '../types/index.js';
+import { emailUsernames } from './username.js';
 
 // Elastic Common Schema (ECS) field targets — see research/elastic_dsl_eql.md.
 // registry.path (not registry.key.path) is the real ECS registry field.
@@ -93,13 +94,31 @@ export function elasticQuery(type: IOCType, values: string[], options?: HuntOpti
       break;
     }
 
+    case 'filename': {
+      // ECS file.* and process.* fields. A bare-name IOC matches file.name /
+      // process.name; a full-path IOC matches file.path / process.executable.
+      query = JSON.stringify(boolQuery([
+        { terms: { 'file.name': values } },
+        { terms: { 'file.path': values } },
+        { terms: { 'process.name': values } },
+        { terms: { 'process.executable': values } },
+      ], options), null, 2);
+      description = `Elastic DSL: Hunt for ${values.length} filename/path IOC(s) in file & process events`;
+      break;
+    }
+
     case 'email': {
+      // The address doubles as the login identity, so also match ECS user.name /
+      // source.user.name against the full address + local part.
+      const usernames = emailUsernames(values);
       query = JSON.stringify(boolQuery([
         { terms: { 'email.from.address': values } },
         { terms: { 'email.to.address': values } },
         { terms: { 'user.email': values } },
+        { terms: { 'user.name': usernames } },
+        { terms: { 'source.user.name': usernames } },
       ], options), null, 2);
-      description = `Elastic DSL: Hunt for ${values.length} email IOC(s)`;
+      description = `Elastic DSL: Hunt for ${values.length} email IOC(s) in mail and identity events`;
       break;
     }
 
@@ -116,6 +135,21 @@ export function elasticQuery(type: IOCType, values: string[], options?: HuntOpti
         { terms: { 'vulnerability.id': values } },
       ], options), null, 2);
       description = `Elastic DSL: Hunt for exploitation activity related to ${values.length} CVE(s)`;
+      break;
+    }
+
+    case 'aws_access_key': {
+      // ECS CloudTrail: the access key is aws.cloudtrail.user_identity.access_key_id.
+      query = JSON.stringify(boolQuery([
+        { terms: { 'aws.cloudtrail.user_identity.access_key_id': values } },
+        { terms: { 'aws.cloudtrail.request_parameters.accessKeyId': values } },
+      ], options, {
+        aggs: {
+          by_event: { terms: { field: 'event.action', size: 25 } },
+          by_source_ip: { terms: { field: 'source.ip', size: 20 } },
+        },
+      }), null, 2);
+      description = `Elastic DSL: Hunt AWS CloudTrail for ${values.length} leaked access key(s)`;
       break;
     }
 

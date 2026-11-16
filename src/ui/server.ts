@@ -1,7 +1,7 @@
 import { scrapeURL } from '../ingestion/scraper.js';
 import { parseBulkText } from '../ingestion/manual.js';
 import { parseBuffer } from '../ingestion/file-parser.js';
-import { upsertIOC, bulkUpsertIOCs, bulkLinkSourceUrl, listIOCs, countIOCs, getStats, deleteIOC, getIOC, ignoreIOC, annotateIOC, restoreAllIgnored, getStatsByType, getFeeds, getFeedsWithTypes, getStatsBySource, deleteBySourceUrl, clearAllIOCs } from '../storage/db.js';
+import { upsertIOC, bulkUpsertIOCs, bulkLinkSourceUrl, listIOCs, countIOCs, getStats, deleteIOC, deleteByTag, getIOC, ignoreIOC, annotateIOC, restoreAllIgnored, getStatsByType, getFeeds, getFeedsWithTypes, getStatsBySource, deleteBySourceUrl, clearAllIOCs } from '../storage/db.js';
 import { analyzeIOC, type AnalyzeOptions } from '../intel/providers.js';
 import { enrichIOC } from '../enrichment/index.js';
 import { classifyBatch } from '../classification/classifier.js';
@@ -52,6 +52,7 @@ const STATIC_FILES = new Map<string, { file: string[]; type: string; cache: stri
   ['/cheatsheet.js', { file: ['cheatsheet.js'], type: JS_TYPE, cache: 'no-store' }],
   ['/detection.js', { file: ['detection.js'], type: JS_TYPE, cache: 'no-store' }],
   ['/ttp-library.js', { file: ['ttp-library.js'], type: JS_TYPE, cache: 'no-store' }],
+  ['/frameworks.js', { file: ['frameworks.js'], type: JS_TYPE, cache: 'no-store' }],
   // Title font is self-hosted so the page makes no third-party requests and
   // the CSP needs no font-src exception.
   ['/fonts/ChakraPetch-Bold.woff2', { file: ['fonts', 'ChakraPetch-Bold.woff2'], type: 'font/woff2', cache: 'public, max-age=31536000, immutable' }],
@@ -343,6 +344,14 @@ export async function handleRequest(req: Request, socketIP?: string): Promise<Re
           return json({ ok: true }, cors);
         }
 
+        if (path === '/api/iocs/delete-by-tag' && req.method === 'POST') {
+          const body = await readJSON<{ tag?: unknown }>(req);
+          const tag = requireString(body.tag, 'tag', 32);
+          if (!/^[a-z0-9_-]{1,32}$/.test(tag)) return json({ error: 'invalid tag' }, cors, 400);
+          const { deleted } = await deleteByTag(tag, sessionId);
+          return json({ ok: true, deleted }, cors);
+        }
+
         // Extract-only — parses text, returns IOCs, does NOT save to DB
         if (path === '/api/extract/text' && req.method === 'POST') {
           const body = await readJSON<{ text?: unknown }>(req);
@@ -397,9 +406,15 @@ export async function handleRequest(req: Request, socketIP?: string): Promise<Re
         // re-extraction, just normalizes, classifies, and persists directly so
         // these IOCs also show up in the IOC List and Enrichment tabs.
         if (path === '/api/iocs/add-manual' && req.method === 'POST') {
-          const { iocs: rawIOCs } = await readJSON<{ iocs: Array<{ value: string; type: string }> }>(req);
+          const { iocs: rawIOCs, tags: rawTags } = await readJSON<{ iocs: Array<{ value: string; type: string }>; tags?: unknown }>(req);
           if (!Array.isArray(rawIOCs) || !rawIOCs.length) return json({ error: 'iocs must be a non-empty array' }, cors, 400);
           if (rawIOCs.length > MAX_RAW_IOCS) return json({ error: `Too many IOCs (max ${MAX_RAW_IOCS})` }, cors, 413);
+          // Optional caller-supplied tags (e.g. 'sample' for demo data so it can
+          // be removed in one click). Restricted to a safe slug charset so a tag
+          // can't later break out when rendered or matched with LIKE.
+          const tags = Array.isArray(rawTags)
+            ? rawTags.filter((t): t is string => typeof t === 'string' && /^[a-z0-9_-]{1,32}$/.test(t)).slice(0, 8)
+            : [];
           // This is the only ingestion path that takes `type` directly from
           // the client instead of deriving it from regex-pattern extraction
           // (extract() always assigns type from a fixed literal per pattern),
@@ -422,7 +437,7 @@ export async function handleRequest(req: Request, socketIP?: string): Promise<Re
               classification: 'unknown' as const,
               source: 'manual' as const,
               extractedAt: now,
-              tags: [] as string[],
+              tags: [...tags],
             }));
           const classified = classifyBatch(built);
           const { inserted } = await bulkUpsertIOCs(classified, sessionId);
@@ -1222,9 +1237,11 @@ function getHTML(): string {
   <span class="mb-label">Mode</span>
   <span class="hc-toggle" id="modeBarHyp" onclick="selectMode('hypothesis')"><span>Hypothesis Hunt</span></span>
   <span class="hc-toggle" id="modeBarIoc" onclick="selectMode('ioc')"><span>IOC Hunt</span></span>
+  <span class="hc-toggle" id="modeBarFrameworks" onclick="selectMode('frameworks')"><span>Frameworks</span></span>
   <div style="margin-left:auto;display:flex;gap:6px;">
     <span class="hc-toggle" onclick="loadDemoData('hypothesis')"><span>Load Hypothesis Hunt Data</span></span>
     <span class="hc-toggle" onclick="loadDemoData('iocs')"><span>Load IOC Demo Data</span></span>
+    <span class="hc-toggle" style="--hc-primary:var(--red);" onclick="removeSampleData(this)"><span>Remove Sample Data</span></span>
   </div>
 </div>
 <div id="hypothesisWarning" class="hypothesis-warning-banner" style="display:none;">⚠ <span class="hw-text">Hypothesis mode is currently under dev — I am learning and need more white board to dive deeper into this — hAckDHD</span></div>
@@ -1365,6 +1382,7 @@ function getHTML(): string {
     <div class="tab" onclick="showTab('analyst')">Analyst View</div>
     <div class="tab" id="tabBtnDescription" onclick="showTab('description')">IOC Description</div>
     <div class="tab" id="tabBtnHypreport" style="display:none;" onclick="showTab('hypreport')">Hypothesis Hunt Report</div>
+    <div class="tab" id="tabBtnFrameworks" style="display:none;" onclick="showTab('frameworks')">Hunt Frameworks</div>
   </div>
   </div>
 
@@ -1869,6 +1887,28 @@ function getHTML(): string {
     <div id="detectResults" style="color:var(--text2);font-size:12px;">Add IOCs above and click Generate Rules.</div>
   </div>
 
+  <!-- ── Hunt Frameworks ── -->
+  <div id="tab-frameworks" style="display:none;">
+    <div class="panel" style="margin-bottom:12px;">
+      <div class="panel-header">Pick a framework — it drives the worksheet below</div>
+      <div class="panel-body">
+        <div id="fwSelector"></div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px;">Choose the methodology that fits the hunt, work through its phases, then compile a hunt plan you can copy into your ticket or report. Notes are saved in this browser.</div>
+      </div>
+    </div>
+    <div class="panel" style="margin-bottom:12px;">
+      <div class="panel-header">Models &amp; maturity — reference</div>
+      <div class="panel-body"><div id="fwModels" class="grid-auto" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;"></div></div>
+    </div>
+    <div id="fwBody"></div>
+    <div style="display:flex;gap:8px;align-items:center;margin:10px 0;flex-wrap:wrap;">
+      <button class="hc-toggle" onclick="fwCompile()"><span>Compile Hunt Plan</span></button>
+      <button class="hc-toggle" id="fwCopyBtn" style="display:none;" onclick="fwCopyPlan(this)"><span>Copy</span></button>
+      <button class="hc-toggle" style="font-size:10px;padding:2px 9px;" onclick="fwClear()"><span>Clear this framework</span></button>
+    </div>
+    <textarea id="fwPlan" rows="14" style="width:100%;font-family:monospace;font-size:11px;display:none;" readonly></textarea>
+  </div>
+
 </div><!-- /main -->
 </div><!-- /layout -->
 </div><!-- /appRoot -->
@@ -1881,12 +1921,15 @@ let currentMode = null;
 // no Hypothesis Builder or TTP Library.
 const IOC_ONLY_TABS = ['cheatsheet','detect','description'];
 const HYPOTHESIS_ONLY_TABS = ['hypothesis','ttp','hypreport'];
+const FRAMEWORKS_ONLY_TABS = ['frameworks'];
+const MODE_LANDING = { hypothesis: 'hypothesis', ioc: 'hunt', frameworks: 'frameworks' };
 function selectMode(mode){
   const changed = currentMode !== mode;
   currentMode = mode;
   localStorage.setItem('lth_mode', mode);
   document.getElementById('modeBarHyp').classList.toggle('active', mode==='hypothesis');
   document.getElementById('modeBarIoc').classList.toggle('active', mode==='ioc');
+  document.getElementById('modeBarFrameworks').classList.toggle('active', mode==='frameworks');
   document.getElementById('hypothesisWarning').style.display = mode==='hypothesis' ? '' : 'none';
   if(mode==='hypothesis') scheduleHypothesisGlitch(); else stopHypothesisGlitch();
   HYPOTHESIS_ONLY_TABS.forEach(t=>{
@@ -1895,7 +1938,10 @@ function selectMode(mode){
   IOC_ONLY_TABS.forEach(t=>{
     document.getElementById('tabBtn'+t[0].toUpperCase()+t.slice(1)).style.display = mode==='ioc' ? '' : 'none';
   });
-  if(changed) showTab(mode==='hypothesis' ? 'hypothesis' : 'hunt');
+  FRAMEWORKS_ONLY_TABS.forEach(t=>{
+    document.getElementById('tabBtn'+t[0].toUpperCase()+t.slice(1)).style.display = mode==='frameworks' ? '' : 'none';
+  });
+  if(changed) showTab(MODE_LANDING[mode] || 'hunt');
 }
 // No more landing-page mode gate — go straight into the app, defaulting to
 // IOC mode (or whatever was last used, from localStorage). appRoot is
@@ -1903,7 +1949,7 @@ function selectMode(mode){
 // hidden; this just sets the mode-bar/tabs/banner to match on load.
 function initMode(){
   const saved = localStorage.getItem('lth_mode');
-  selectMode(saved==='hypothesis' ? 'hypothesis' : 'ioc');
+  selectMode(['hypothesis','frameworks'].includes(saved) ? saved : 'ioc');
 }
 
 // Random-interval glitch for the Hypothesis warning banner — brief (450ms)
@@ -1946,22 +1992,56 @@ async function loadDemoData(kind){
       {value:'attacker@secure-update-portal.com', type:'email'},
       {value:'CVE-2024-21412', type:'cve'},
     ];
-    const r = await api('/api/iocs/add-manual', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({iocs: sample})});
+    const r = await api('/api/iocs/add-manual', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({iocs: sample, tags: ['sample']})});
     if(r && r.error){ showAlert('error', 'Demo data failed: '+r.error); return; }
-    showAlert('success', 'Loaded '+(r && r.inserted!=null ? r.inserted : sample.length)+' sample IOC(s)');
+    showAlert('success', 'Loaded '+(r && r.inserted!=null ? r.inserted : sample.length)+' sample IOC(s) — tagged "sample", use Remove Sample Data to clear');
     refresh();
   } else if(kind==='hypothesis'){
     if(currentMode!=='hypothesis') selectMode('hypothesis');
-    showTab('hypothesis');
     populateHypActorSelect();
-    document.getElementById('hypWhat').value = 'Evidence of lateral movement using living-off-the-land binaries (LOLBins) and scheduled-task persistence';
-    document.getElementById('hypWhy').value = 'Unusual rundll32/regsvr32 activity flagged by EDR on finance-dept workstations, pattern resembles public APT29 reporting';
-    document.getElementById('hypWho').value = 'Suspected APT29 activity targeting finance department';
-    document.getElementById('hypWhen').value = 'Outside business hours over the last 72 hours, deviation from normal admin baseline';
-    document.getElementById('hypWhere').value = 'EDR process logs (DeviceProcessEvents), Windows Security Event Log 4688/4698 — confirmed logged in Sentinel';
-    document.getElementById('hypTestable').value = 'Query process creation logs for rundll32/regsvr32 spawning network connections, and new scheduled tasks, over the last 7 days';
-    document.getElementById('hypActor').value = 'apt29';
-    showAlert('success', 'Sample hypothesis filled in below — review and click Save Hypothesis');
+    // Saved straight into the hunt (sample-flagged) rather than only staged in
+    // the builder form, so it shows up immediately in the list and report.
+    const h = {
+      id: Date.now(),
+      what: 'Evidence of lateral movement using living-off-the-land binaries (LOLBins) and scheduled-task persistence',
+      why: 'Unusual rundll32/regsvr32 activity flagged by EDR on finance-dept workstations, pattern resembles public APT29 reporting',
+      who: 'Suspected APT29 activity targeting finance department',
+      when: 'Outside business hours over the last 72 hours, deviation from normal admin baseline',
+      where: 'EDR process logs (DeviceProcessEvents), Windows Security Event Log 4688/4698 — confirmed logged in Sentinel',
+      testable: 'Query process creation logs for rundll32/regsvr32 spawning network connections, and new scheduled tasks, over the last 7 days',
+      actorId: 'apt29',
+      created: new Date().toISOString(),
+      sample: true,
+    };
+    // Replace any prior sample so repeated clicks don't pile up duplicates.
+    const list = getHypotheses().filter(x => !x.sample);
+    list.unshift(h);
+    setHypotheses(list);
+    showTab('hypothesis');
+    renderHypothesesList();
+    showAlert('success', 'Sample hypothesis added to your hunt — use Remove Sample Data to clear it');
+  }
+}
+
+// Clears everything loaded by the "Load … Data" buttons: sample-tagged IOCs
+// from this session's DB, and the sample-flagged hypothesis from local storage.
+async function removeSampleData(btn){
+  const before = getHypotheses();
+  const kept = before.filter(h => !h.sample);
+  const removedHyp = before.length - kept.length;
+  setHypotheses(kept);
+  renderHypothesesList();
+  let removedIoc = 0;
+  try{
+    const r = await api('/api/iocs/delete-by-tag', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({tag: 'sample'})});
+    if(r && r.error){ showAlert('error', 'Remove failed: '+r.error); return; }
+    removedIoc = (r && r.deleted) || 0;
+  }catch(e){ showAlert('error', 'Remove failed: '+(e && e.message ? e.message : String(e))); return; }
+  refresh();
+  if(removedIoc || removedHyp){
+    showAlert('success', 'Removed sample data — '+removedIoc+' IOC(s)'+(removedHyp ? ', '+removedHyp+' hypothesis(es)' : ''));
+  } else {
+    showAlert('success', 'No sample data to remove');
   }
 }
 
@@ -2130,6 +2210,7 @@ function renderHypothesesList(){
   el.innerHTML = list.map(h => {
     return '<div class="panel" style="margin-bottom:10px;">'+
       '<div class="panel-header">Hypothesis — '+new Date(h.created).toLocaleString()+
+        (h.sample ? ' <span style="font-size:9px;font-weight:700;color:var(--yellow);border:1px solid var(--yellow);border-radius:3px;padding:1px 5px;margin-left:6px;">SAMPLE</span>' : '')+
         '<button class="hc-toggle" style="margin-left:auto;font-size:10px;padding:2px 8px;--hc-primary:var(--red);" onclick="deleteHypothesis('+h.id+')"><span>Delete</span></button>'+
       '</div>'+
       '<div class="panel-body" style="font-size:12px;">'+
@@ -3800,7 +3881,7 @@ function typeIcon(t){
 
 
 // ══════════════════ TABS / UTIL ══════════════════
-const TAB_ORDER = ['hypothesis','ttp','hunt','iocs','enrichment','cheatsheet','detect','analyst','description','hypreport'];
+const TAB_ORDER = ['hypothesis','ttp','hunt','iocs','enrichment','cheatsheet','detect','analyst','description','hypreport','frameworks'];
 function showTab(name){
   TAB_ORDER.forEach(t=>{
     document.getElementById('tab-'+t).style.display=t===name?'':'none';
@@ -3817,6 +3898,7 @@ function showTab(name){
   if(name==='analyst') loadAnalystView();
   if(name==='cheatsheet') loadCheatSheet();
   if(name==='detect') updateDetectHuntCount();
+  if(name==='frameworks') loadFrameworks();
 }
 
 function exportCSV(){
@@ -4890,6 +4972,7 @@ document.querySelectorAll('.tab, .hc-toggle, .hw-text').forEach(el=>{ if(!el.dat
 <script src="/cheatsheet.js"></script>
 <script src="/detection.js"></script>
 <script src="/ttp-library.js"></script>
+<script src="/frameworks.js"></script>
 <script>
 // Runs after ttp-library.js has loaded (THREAT_ACTORS/TTP_TECHNIQUES must
 // exist before a saved-mode reload can call showTab('hypothesis') ->

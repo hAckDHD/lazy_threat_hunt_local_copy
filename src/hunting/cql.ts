@@ -1,4 +1,5 @@
 import type { IOCType, HuntQuery, HuntOptions } from '../types/index.js';
+import { emailUsernames } from './username.js';
 
 // CrowdStrike Falcon Next-Gen SIEM — CrowdStrike Query Language (CQL).
 // Based on LogScale (Humio) query language.
@@ -130,23 +131,46 @@ export function cqlQuery(type: IOCType, values: string[], options?: HuntOptions)
       description = `CQL (CrowdStrike): Hunt for ${values.length} MD5 hash(es) in endpoint events`;
       break;
 
+    case 'filename':
+      // Process/file-write events. FileName/ImageFileName carry the executed
+      // image name/path; TargetFileName carries the written file. A bare-name or
+      // full-path IOC matches via one of these fields.
+      query = `${tf}// CrowdStrike Falcon SIEM — Filename/Path IOC Hunt
+#event_simpleName IN ["ProcessRollup2", "SyntheticProcessRollup2", "PeFileWritten"]
+| ${orInFilter([
+        { field: 'FileName', values },
+        { field: 'ImageFileName', values },
+        { field: 'TargetFileName', values },
+      ])}
+| groupBy(
+    [FileName, ImageFileName, TargetFileName, ComputerName, UserName, CommandLine],
+    function=count()
+  )
+| sort(_count, order=desc, limit=200)`;
+      description = `CQL (CrowdStrike): Hunt for ${values.length} filename/path IOC(s) in process and file-write events`;
+      break;
+
     case 'email':
       // UNVERIFIED: EmailMessageEvent/SmtpActivity have no corroborating source
       // in CrowdStrike's public schema references — verify against a real
       // Falcon Event Stream/FDR schema before relying on this branch.
+      // The address is also a logon identity — UserPrincipal (UPN) and UserName
+      // on UserLogon events are matched against the full address + local part.
       query = `${tf}// CrowdStrike Falcon SIEM — Email IOC Hunt
 // UNVERIFIED event names — confirm EmailMessageEvent/SmtpActivity exist in your Falcon schema
-#event_simpleName IN ["EmailMessageEvent", "SmtpActivity"]
+#event_simpleName IN ["EmailMessageEvent", "SmtpActivity", "UserLogon", "UserLogonFailed2"]
 | ${orInFilter([
         { field: 'SenderAddress', values },
         { field: 'RecipientAddress', values },
+        { field: 'UserPrincipal', values: emailUsernames(values) },
+        { field: 'UserName', values: emailUsernames(values) },
       ])}
 | groupBy(
-    [SenderAddress, RecipientAddress, Subject, ComputerName],
+    [SenderAddress, RecipientAddress, Subject, UserName, UserPrincipal, ComputerName],
     function=count()
   )
 | sort(_count, order=desc, limit=200)`;
-      description = `CQL (CrowdStrike): Hunt for ${values.length} email IOC(s) [UNVERIFIED event schema]`;
+      description = `CQL (CrowdStrike): Hunt for ${values.length} email IOC(s) in mail and logon events [UNVERIFIED event schema]`;
       break;
 
     case 'cve':

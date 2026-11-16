@@ -76,6 +76,25 @@ ${values.map(v => `            - 'SHA1=${v}'`).join('\n')}
       description = `SIGMA: Process with ${values.length} known-malicious SHA1 hash(es)`;
       break;
 
+    case 'filename':
+      logsource = `logsource:
+    category: process_creation
+    product: windows`;
+      // Image|endswith matches whether the IOC is a bare name ('evil.exe' →
+      // matches '\evil.exe') or a full path. OriginalFileName is the PE's
+      // internal name, catching renamed binaries. (Backslashes are emitted raw,
+      // matching the registry_key rule's convention.)
+      detection = `detection:
+    selection_image:
+        Image|endswith:
+${values.map(v => `            - '${v}'`).join('\n')}
+    selection_original:
+        OriginalFileName:
+${values.map(v => `            - '${v}'`).join('\n')}
+    condition: selection_image or selection_original`;
+      description = `SIGMA: Process creation involving ${values.length} suspicious filename(s)`;
+      break;
+
     case 'registry_key':
       logsource = `logsource:
     category: registry_event
@@ -86,6 +105,18 @@ ${values.map(v => `            - 'SHA1=${v}'`).join('\n')}
 ${values.map(v => `            - '${v}'`).join('\n')}
     condition: selection`;
       description = `SIGMA: Registry modification of ${values.length} suspicious key(s)`;
+      break;
+
+    case 'aws_access_key':
+      logsource = `logsource:
+    product: aws
+    service: cloudtrail`;
+      detection = `detection:
+    selection:
+        userIdentity.accessKeyId:
+${values.map(v => `            - '${v}'`).join('\n')}
+    condition: selection`;
+      description = `SIGMA: AWS CloudTrail activity by ${values.length} leaked access key(s)`;
       break;
 
     default:

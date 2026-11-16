@@ -1,4 +1,5 @@
 import type { IOCType, HuntQuery, HuntOptions } from '../types/index.js';
+import { emailUsernames } from './username.js';
 
 // SentinelOne Singularity — PowerQuery.
 //
@@ -99,14 +100,27 @@ export function s1qlQuery(type: IOCType, values: string[], options?: HuntOptions
       description = `PowerQuery (SentinelOne): Hunt for ${values.length} MD5 hash(es) across process events`;
       break;
 
-    case 'email':
-      query = `// SentinelOne PowerQuery — Email IOC Hunt (UNVERIFIED fields)
-| filter (${inClause('email.sender', values)} or ${inClause('email.recipient', values)})${tw}
-| columns event.time, endpoint.name, tgt.process.name, email.sender, email.recipient, email.subject
+    case 'filename':
+      query = `// SentinelOne PowerQuery — Filename/Path IOC Hunt (UNVERIFIED fields)
+| filter (${inClause('tgt.file.path', values)} or ${inClause('tgt.process.image.path', values)} or ${inClause('tgt.process.name', values)})${tw}
+| columns event.time, endpoint.name, tgt.process.name, tgt.process.image.path, tgt.file.path, tgt.process.user, tgt.process.cmdline
 | sort event.time desc
 | limit 1000`;
-      description = `PowerQuery (SentinelOne): Hunt for ${values.length} email IOC(s)`;
+      description = `PowerQuery (SentinelOne): Hunt for ${values.length} filename/path IOC(s) in file & process events`;
       break;
+
+    case 'email': {
+      // The address is also the account login, so match process-user identity
+      // fields against the full address + local part.
+      const usernames = emailUsernames(values);
+      query = `// SentinelOne PowerQuery — Email IOC Hunt (UNVERIFIED fields)
+| filter (${inClause('email.sender', values)} or ${inClause('email.recipient', values)} or ${inClause('tgt.process.user', usernames)} or ${inClause('src.process.user', usernames)})${tw}
+| columns event.time, endpoint.name, tgt.process.name, tgt.process.user, email.sender, email.recipient, email.subject
+| sort event.time desc
+| limit 1000`;
+      description = `PowerQuery (SentinelOne): Hunt for ${values.length} email IOC(s) in mail and process-user events`;
+      break;
+    }
 
     case 'cve':
       query = `// SentinelOne PowerQuery — CVE Hunt (UNVERIFIED fields)

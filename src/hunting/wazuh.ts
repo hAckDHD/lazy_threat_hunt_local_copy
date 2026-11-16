@@ -1,4 +1,5 @@
 import type { IOCType, HuntQuery, HuntOptions } from '../types/index.js';
+import { emailUsernames } from './username.js';
 
 // Wazuh — WQL (Wazuh Query Language) for the management API + Lucene for the dashboard
 // WQL format: field:operator:value (=, !=, <, >, ~)
@@ -101,14 +102,32 @@ export function wazuhQuery(type: IOCType, values: string[], options?: HuntOption
       description = `Wazuh: Hunt for ${values.length} MD5 hash(es) in FIM events`;
       break;
 
-    case 'email':
+    case 'filename':
       query = `// Wazuh Dashboard — Security Events (Lucene)
-(${luceneOr('data.email.from', values)} OR ${luceneOr('data.email.to', values)} OR ${luceneOr('data.win.eventdata.targetUserName', values)})${tf}
+(${luceneOr('syscheck.path', values)} OR ${luceneOr('data.win.eventdata.image', values)} OR ${luceneOr('data.win.eventdata.targetFilename', values)} OR ${luceneOr('data.audit.file.name', values)})${tf}
+
+// Wazuh API — WQL filter (GET /events)
+// q=${wqlOr('syscheck.path', '~', values)}
+
+// Wazuh FIM (File Integrity Monitoring) — API lookup by path
+// GET /syscheck/{agent_id}?q=file~${values[0] ?? ''}`;
+      description = `Wazuh: Hunt for ${values.length} filename/path IOC(s) in FIM and Sysmon/audit process events`;
+      break;
+
+    case 'email': {
+      // The address is also the login name, so match authentication user fields
+      // (Windows subject/target user, *nix srcuser/dstuser) against the full
+      // address + local part.
+      const usernames = emailUsernames(values);
+      query = `// Wazuh Dashboard — Security Events (Lucene)
+(${luceneOr('data.email.from', values)} OR ${luceneOr('data.email.to', values)} OR ${luceneOr('data.win.eventdata.targetUserName', usernames)} OR ${luceneOr('data.win.eventdata.subjectUserName', usernames)} OR ${luceneOr('data.srcuser', usernames)} OR ${luceneOr('data.dstuser', usernames)})${tf}
 
 // Wazuh API — WQL filter
-// q=${wqlOr('data.email.from', '~', values)}`;
-      description = `Wazuh: Hunt for ${values.length} email IOC(s) in alert events`;
+// q=${wqlOr('data.email.from', '~', values)}
+// q=${wqlOr('data.dstuser', '~', usernames)}`;
+      description = `Wazuh: Hunt for ${values.length} email IOC(s) in mail and authentication alert events`;
       break;
+    }
 
     case 'cve':
       query = `// Wazuh Dashboard — Security Events (Lucene)

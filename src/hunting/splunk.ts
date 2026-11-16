@@ -1,4 +1,5 @@
 import type { IOCType, HuntQuery, HuntOptions } from '../types/index.js';
+import { emailUsernames } from './username.js';
 
 function timeClause(options?: HuntOptions): string {
   const tr = options?.timeRange;
@@ -73,13 +74,28 @@ export function splunkQuery(type: IOCType, values: string[], options?: HuntOptio
       description = `Splunk: Hunt for ${values.length} MD5 hash(es)`;
       break;
 
-    case 'email':
-      // sender/recipient are CIM Email fields; from/to are not, dropped.
-      query = `${tc}index=${idx} (sender IN (${list}) OR recipient IN (${list}))
-| stats count by _time, sender, recipient, subject, index
+    case 'filename':
+      // Endpoint CIM Processes/Filesystem fields. Values arrive either as a bare
+      // name (evil.exe) or a full path (C:\...\evil.exe), so match name fields
+      // (which hold the bare name) and path fields (which hold the full path)
+      // together — whichever form the IOC takes, at least one field hits.
+      query = `${tc}index=${idx} (file_name IN (${list}) OR process_name IN (${list}) OR process IN (${list}) OR process_path IN (${list}) OR file_path IN (${list}) OR parent_process_name IN (${list}))
+| stats count by _time, host, user, process_name, file_name, process_path, file_path, index, sourcetype
 | sort -count`;
-      description = `Splunk: Hunt for ${values.length} suspicious email address(es)`;
+      description = `Splunk: Hunt for ${values.length} filename/path IOC(s) in endpoint process & file events`;
       break;
+
+    case 'email': {
+      // sender/recipient are CIM Email fields; from/to are not, dropped.
+      // The address is also commonly the login name, so pivot into the
+      // Authentication model's user/src_user via the full address + local part.
+      const userList = emailUsernames(values).map(v => `"${splunkEscape(v)}"`).join(' ');
+      query = `${tc}index=${idx} (sender IN (${list}) OR recipient IN (${list}) OR user IN (${userList}) OR src_user IN (${userList}))
+| stats count by _time, sender, recipient, user, src_user, subject, index
+| sort -count`;
+      description = `Splunk: Hunt for ${values.length} suspicious email address(es) across mail and authentication logs`;
+      break;
+    }
 
     case 'cve':
       query = `${tc}index=${idx} (vulnerability IN (${list}) OR cve IN (${list}) OR signature IN (${list}))
@@ -95,6 +111,15 @@ export function splunkQuery(type: IOCType, values: string[], options?: HuntOptio
 | stats count by _time, host, TargetObject, Details, EventCode
 | sort -count`;
       description = `Splunk: Hunt for ${values.length} registry key IOC(s) via Windows Event Logs`;
+      break;
+
+    case 'aws_access_key':
+      // AWS CloudTrail records the key under userIdentity.accessKeyId; leaked keys
+      // also show up as the subject of IAM calls (requestParameters.userName etc.).
+      query = `${tc}index=${idx} sourcetype=aws:cloudtrail (userIdentity.accessKeyId IN (${list}) OR requestParameters.accessKeyId IN (${list}))
+| stats count earliest(_time) as firstSeen latest(_time) as lastSeen values(eventName) as actions values(sourceIPAddress) as srcIps by userIdentity.accessKeyId, userIdentity.arn, awsRegion
+| sort -count`;
+      description = `Splunk: Hunt AWS CloudTrail for activity by ${values.length} leaked access key(s)`;
       break;
 
     default:

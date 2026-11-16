@@ -2,7 +2,7 @@ import type { IOC, IOCType, HuntQuery } from '../types/index.js';
 
 export function yaraRule(type: IOCType, iocs: IOC[]): HuntQuery | null {
   // YARA is most useful for file-based IOCs (hashes, strings in files)
-  const fileTypes: IOCType[] = ['sha256', 'sha1', 'md5', 'domain', 'url', 'ip', 'email'];
+  const fileTypes: IOCType[] = ['sha256', 'sha1', 'md5', 'domain', 'url', 'ip', 'email', 'filename'];
   if (!fileTypes.includes(type)) return null;
   if (!iocs.length) return null;
 
@@ -51,6 +51,17 @@ export function yaraRule(type: IOCType, iocs: IOC[]): HuntQuery | null {
         return `    $ioc_${idx} = "${escaped}" nocase`;
       }).join('\n');
       condition = `    any of ($ioc_*)`;
+      break;
+    }
+
+    case 'filename': {
+      // Filenames/paths referenced as literal strings inside a sample (droppers,
+      // loaders, scripts that write or launch the file by name).
+      description = `YARA (artifact/memory scan, not a live SIEM query): filename/path string match for ${iocs.length} indicator(s) in file content`;
+      strings = iocs.map((i, idx) =>
+        `    $file_${idx} = "${i.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}" nocase`
+      ).join('\n');
+      condition = `    any of ($file_*)`;
       break;
     }
 

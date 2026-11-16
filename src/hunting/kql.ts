@@ -1,4 +1,5 @@
 import type { IOCType, HuntQuery, HuntOptions } from '../types/index.js';
+import { emailUsernames } from './username.js';
 
 // Microsoft KQL — works for Sentinel, Defender ATP, and Azure Log Analytics
 
@@ -15,6 +16,15 @@ function timeWhere(options?: HuntOptions): string {
     return `\n     | where TimeGenerated between (datetime(${s}) .. datetime(${e}))`;
   }
   return '';
+}
+
+// KQL verbatim string literal @"...": the only in-string escape is a doubled
+// quote (""), and backslashes stay literal. Use it for free-form values that may
+// contain backslashes (file paths): a trailing "\" can never combine with the
+// closing quote to break out, and the output never contains the ambiguous \\"
+// sequence that JSON-style escaping inside dynamic([...]) would produce.
+function kqlVerbatimList(values: string[]): string {
+  return values.map(v => `@"${v.replace(/"/g, '""')}"`).join(', ');
 }
 
 export function kqlQuery(type: IOCType, values: string[], options?: HuntOptions): HuntQuery | null {
@@ -90,19 +100,53 @@ DeviceFileEvents${tw}
       description = `KQL: Hunt for ${values.length} MD5 hash(es) in file events`;
       break;
 
-    case 'email':
+    case 'filename':
+      // Defender endpoint tables. FileName holds the bare name, FolderPath the
+      // full path — match both so a bare-name or full-path IOC each resolve.
+      // in~ is the case-insensitive variant (filenames are not case-sensitive).
+      // File paths are free-form and may contain backslashes, so build the list
+      // with verbatim literals (pack_array) rather than JSON-escaped dynamic([]).
+      query = `// Generated ${ts}
+let ioc_files = pack_array(${kqlVerbatimList(values)});
+union
+    (DeviceFileEvents${tw}
+     | where FileName in~ (ioc_files) or FolderPath in~ (ioc_files)
+     | project TimeGenerated, DeviceName, FileName, FolderPath, ActionType, InitiatingProcessFileName, InitiatingProcessAccountName),
+    (DeviceProcessEvents${tw}
+     | where FileName in~ (ioc_files) or FolderPath in~ (ioc_files) or InitiatingProcessFileName in~ (ioc_files)
+     | project TimeGenerated, DeviceName, FileName, FolderPath, ProcessCommandLine, AccountName),
+    (DeviceImageLoadEvents${tw}
+     | where FileName in~ (ioc_files) or FolderPath in~ (ioc_files)
+     | project TimeGenerated, DeviceName, FileName, FolderPath, InitiatingProcessFileName)
+| order by TimeGenerated desc`;
+      description = `KQL: Hunt for ${values.length} filename/path IOC(s) in Defender file, process, and image-load events`;
+      break;
+
+    case 'email': {
+      // The address is also the Azure AD UPN / account name, so pivot into
+      // sign-in and identity logon events via the full address + local part.
+      const userList = emailUsernames(values)
+        .map(v => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(', ');
       query = `// Generated ${ts}
 let ioc_emails = dynamic([${valueList}]);
+let ioc_users = dynamic([${userList}]);
 union
     (EmailEvents${tw}
      | where SenderFromAddress in~ (ioc_emails) or RecipientEmailAddress in~ (ioc_emails)
      | project TimeGenerated, SenderFromAddress, RecipientEmailAddress, Subject, ThreatTypes, DeliveryAction),
     (AuditLogs${tw}
      | where InitiatedBy has_any (ioc_emails)
-     | project TimeGenerated, OperationName, InitiatedBy, Result)
+     | project TimeGenerated, OperationName, InitiatedBy, Result),
+    (SigninLogs${tw}
+     | where UserPrincipalName in~ (ioc_users)
+     | project TimeGenerated, UserPrincipalName, AppDisplayName, IPAddress, ResultType, Location),
+    (IdentityLogonEvents${tw}
+     | where AccountUpn in~ (ioc_users) or AccountName in~ (ioc_users)
+     | project TimeGenerated, DeviceName, AccountUpn, AccountName, LogonType, ActionType)
 | order by TimeGenerated desc`;
-      description = `KQL: Hunt for ${values.length} email address IOC(s) in email events`;
+      description = `KQL: Hunt for ${values.length} email IOC(s) across email, sign-in, and identity logon events`;
       break;
+    }
 
     case 'cve':
       // NOTE: no clean CVE-to-exploitation table exists in KQL. SecurityAlert
@@ -132,6 +176,17 @@ DeviceRegistryEvents${tw}
           RegistryValueData, InitiatingProcessFileName, InitiatingProcessAccountName
 | order by TimeGenerated desc`;
       description = `KQL: Hunt for ${values.length} registry key IOC(s) in Defender registry events`;
+      break;
+
+    case 'aws_access_key':
+      // Sentinel's AWS CloudTrail connector lands records in the AWSCloudTrail table.
+      query = `// Generated ${ts}
+let ioc_keys = dynamic([${valueList}]);
+AWSCloudTrail${tw}
+| where UserIdentityAccessKeyId in (ioc_keys)
+| project TimeGenerated, EventName, EventSource, UserIdentityAccessKeyId, UserIdentityArn, UserIdentityType, SourceIpAddress, AWSRegion
+| order by TimeGenerated desc`;
+      description = `KQL (Sentinel): Hunt AWS CloudTrail for ${values.length} leaked access key(s)`;
       break;
 
     default:
